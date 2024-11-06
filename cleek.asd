@@ -3,7 +3,7 @@
   :description "DNS manipulation library"
   :author "Yacin Nadji <yacin@defmacro.cc>"
   :license "MIT"
-  :depends-on ("str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns")
+  :depends-on ("str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns" "com.inuoe.jzon")
   :components ((:file "packages")
                (:file "main"))
   :in-order-to ((test-op (test-op :cleek/tests))))
