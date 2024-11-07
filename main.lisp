@@ -101,6 +101,16 @@
            (chipz:make-decompressing-stream 'chipz:gzip stream))
           (t (error "Decompression unknown for file type of: ~a" filename)))))
 
+(defun compress-if-needed (stream)
+  (let ((filename (file-namestring stream)))
+    (cond ((str:ends-with? ".log" filename :ignore-case t)
+           stream)
+          ((str:ends-with? ".zst" filename :ignore-case t)
+           (zstd:make-compressing-stream stream))
+          ((str:ends-with? ".gz" filename :ignore-case t)
+           (salza2:make-compressing-stream 'salza2:gzip-compressor stream))
+          (t (error "Decompression unknown for file type of: ~a" filename)))))
+
 (defun read-log (path)
   (let (*field-names*)
     (with-open-file (in path :element-type '(unsigned-byte 8))
@@ -110,3 +120,24 @@
                       while record
                       collect record)
                 *field-names*)))))
+
+(defun record->bytes (record field-names output-format)
+  (case output-format
+    (:json (babel:string-to-octets (format nil "~a~%" (jzon:stringify record))))
+    (:zeek ;; this is incomplete until you handle JSON arrays (when going from json->zeek).
+     (babel:string-to-octets
+      (format nil (format nil "~~{~~a~~^~C~~}~~%" *zeek-field-separator*)
+              (loop for field-name in field-names
+                    collect (gethash field-name record "-")))))))
+
+(defun write-log (records field-names output-format path)
+  (with-open-file (out path :element-type '(unsigned-byte 8) :direction :output :if-exists :supersede)
+    (let ((stream (compress-if-needed out)))
+      (when (eq output-format :zeek)
+        )
+      (loop for record in records
+            do (write-sequence (record->bytes record field-names output-format)
+                               stream))
+      (when (eq output-format :zeek)
+        )
+      (close stream))))
