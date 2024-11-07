@@ -14,11 +14,6 @@
 (defparameter *buffer* (make-array *buffer-size* :element-type '(unsigned-byte 8)))
 (defvar *newline-byte* (char-code #\Newline))
 
-(defun infer-compression (path)
-  (cond ((str:ends-with? ".log" path :ignore-case t) :txt)
-        ((str:ends-with? ".zst" path :ignore-case t) :zstd)
-        ((str:ends-with? ".gz" path :ignore-case t) :gzip)))
-
 (defun ->keyword (s) (ax:make-keyword (str:upcase s)))
 
 (defun shift-unfinished-sequence (buf start)
@@ -91,29 +86,24 @@
                (zeek-reader line-reader field-names types)))
       (:json (json-reader line-reader)))))
 
+(defun decompress-if-needed (stream path)
+  (let ((path (file-namestring path)))
+   (cond ((str:ends-with? ".log" path :ignore-case t)
+          stream)
+         ((str:ends-with? ".zst" path :ignore-case t)
+          (zstd:make-decompressing-stream stream))
+         ((str:ends-with? ".gz" path :ignore-case t)
+          (chipz:make-decompressing-stream 'chipz:gzip stream))
+         (t (error "Decompression unknown for file type of: ~a" path)))))
+
 ;; TODO: In order to go from JSON input to Zeek output, I need to get the
 ;; FIELD-NAMES for the row with the most JSON keys. You could make the readers
 ;; return (VALUES ht MORE?) when you have a record and (VALUES FIELD-NAMES NIL)
 ;; when the file has finished being read.
 (defun read-log (path)
   (with-open-file (in path :element-type '(unsigned-byte 8))
-    (let ((reader (make-reader in)))
+    (let* ((stream (decompress-if-needed in path))
+           (reader (make-reader stream)))
       (loop for record = (funcall reader)
             while record
             collect record))))
-
-;; well, looks like everything is gonna have to be with READ-SEQUENCE and
-;; streams of bytes.
-(defun read-from-gzip ()
-  (with-open-file (in #P"/Users/yacin/code/cleek/data/json/gzip/dns.log.gz" :element-type '(unsigned-byte 8)) 
-    (let ((stream (chipz:make-decompressing-stream 'chipz:gzip in))
-          (buffer (make-array 64 :element-type '(unsigned-byte 8))))
-      (read-sequence buffer stream)
-      buffer)))
-
-(defun read-from-zstd ()
-  (with-open-file (in #P"/Users/yacin/code/cleek/data/json/zstd/dns.log.zst" :element-type '(unsigned-byte 8)) 
-    (let ((stream (zstd:make-decompressing-stream in))
-          (buffer (make-array 64 :element-type '(unsigned-byte 8))))
-      (read-sequence buffer stream)
-      buffer)))
