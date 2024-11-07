@@ -14,11 +14,6 @@
 (defparameter *buffer* (make-array *buffer-size* :element-type '(unsigned-byte 8)))
 (defvar *newline-byte* (char-code #\Newline))
 
-(defun infer-log-format (stream)
-  (ecase (peek-char nil stream)
-    (#\{ :json)
-    (#\# :zeek)))
-
 (defun infer-compression (path)
   (cond ((str:ends-with? ".log" path :ignore-case t) :txt)
         ((str:ends-with? ".zst" path :ignore-case t) :zstd)
@@ -34,8 +29,10 @@
 
 (defun sequence-line-reader (stream)
   (let ((start 0)
-        (eof? nil))
-    (read-sequence *buffer* stream)
+        (eof? nil)
+        (first-byte (setf (aref *buffer* 0)
+                          (read-byte stream nil))))
+    (read-sequence *buffer* stream :start 1) ; we already read the first byte above.
     (labels ((slr ()
                (when eof?
                  (return-from slr))
@@ -46,49 +43,60 @@
                    ;; READ-SEQUENCE returns the first element of *BUFFER* that
                    ;; was unmodified. If it is equal to whatever the :START was,
                    ;; that means it read zero bytes and we hit EOF.
-                   (setf eof? (= read-index (read-sequence *buffer* stream :start read-index)))
+                   (setf eof? (= read-index
+                                 (read-sequence *buffer* stream :start read-index)))
                    (setf start 0)
                    (slr)))))
-      #'slr)))
+      (values #'slr
+              (ecase first-byte ; 123 is (char-code #\{), 35 is (char-code #\#)
+                (123 :json)
+                (35 :zeek))))))
 
-(defun read-zeek-header (stream)
+(defun read-zeek-header (line-reader)
   (let ((field-names nil)
-        (types nil))
-    (loop while (eq #\# (peek-char nil stream))
-          for line = (read-line stream nil)
+        (types nil)
+        (more-header? t))
+    (loop while more-header?
+          for line = (funcall line-reader)
           when (str:starts-with? "#fields" line)
             do (setf field-names (mapcar #'->keyword (rest (str:split *zeek-field-separator* line))))
           when (str:starts-with? "#types" line)
-            do (setf types (mapcar #'->keyword (rest (str:split *zeek-field-separator* line)))))
+            do (setf types (mapcar #'->keyword (rest (str:split *zeek-field-separator* line)))
+                     more-header? nil))
     (values field-names types)))
 
-(defun zeek-reader (stream field-names types)
+(defun zeek-reader (line-reader field-names types)
   (declare (ignore types))
-  (lambda ()
-    (when (not (eq #\# (peek-char nil stream)))
-      (let ((fields (str:split *zeek-field-separator* (read-line stream nil)))
-            (ht (make-hash-table :size (length field-names))))
-        (loop for field in fields for name in field-names
-              do (setf (gethash name ht) field))
-        ht))))
+  (let ((num-fields (length field-names)))
+   (lambda ()
+     (let ((line (funcall line-reader))
+           (ht (make-hash-table :size num-fields)))
+       (unless (or (not line)
+                   (char= #\# (char line 0)))
+        (loop for field in (str:split *zeek-field-separator* line)
+              for name in field-names
+              do (setf (gethash name ht) field)))
+       (unless (zerop (hash-table-count ht))
+         ht)))))
 
-(defun json-reader (stream)
+(defun json-reader (line-reader)
   (lambda ()
-    (ax:when-let ((line (read-line stream nil)))
+    (ax:when-let ((line (funcall line-reader)))
       (jzon:parse line :key-fn #'->keyword))))
 
 (defun make-reader (stream)
-  (ecase (infer-log-format stream)
-    (:zeek (multiple-value-bind (field-names types) (read-zeek-header stream)
-             (zeek-reader stream field-names types)))
-    (:json (json-reader stream))))
+  (multiple-value-bind (line-reader format) (sequence-line-reader stream)
+    (ecase format
+      (:zeek (multiple-value-bind (field-names types) (read-zeek-header line-reader)
+               (zeek-reader line-reader field-names types)))
+      (:json (json-reader line-reader)))))
 
 ;; TODO: In order to go from JSON input to Zeek output, I need to get the
 ;; FIELD-NAMES for the row with the most JSON keys. You could make the readers
 ;; return (VALUES ht MORE?) when you have a record and (VALUES FIELD-NAMES NIL)
 ;; when the file has finished being read.
 (defun read-log (path)
-  (with-open-file (in path)
+  (with-open-file (in path :element-type '(unsigned-byte 8))
     (let ((reader (make-reader in)))
       (loop for record = (funcall reader)
             while record
