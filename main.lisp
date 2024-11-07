@@ -47,43 +47,48 @@
                 (123 :json)
                 (35 :zeek))))))
 
+(defvar *field-names* nil)
+
 (defun read-zeek-header (line-reader)
-  (let ((field-names nil)
-        (types nil)
+  (let ((types nil)
         (more-header? t))
     (loop while more-header?
           for line = (funcall line-reader)
           when (str:starts-with? "#fields" line)
-            do (setf field-names (mapcar #'->keyword (rest (str:split *zeek-field-separator* line))))
+            do (setf *field-names* (mapcar #'->keyword (rest (str:split *zeek-field-separator* line))))
           when (str:starts-with? "#types" line)
             do (setf types (mapcar #'->keyword (rest (str:split *zeek-field-separator* line)))
                      more-header? nil))
-    (values field-names types)))
+    (values *field-names* types)))
 
-(defun zeek-reader (line-reader field-names types)
-  (declare (ignore types))
-  (let ((num-fields (length field-names)))
-   (lambda ()
-     (let ((line (funcall line-reader))
-           (ht (make-hash-table :size num-fields)))
-       (unless (or (not line)
-                   (char= #\# (char line 0)))
-        (loop for field in (str:split *zeek-field-separator* line)
-              for name in field-names
-              do (setf (gethash name ht) field)))
-       (unless (zerop (hash-table-count ht))
-         ht)))))
+(defun zeek-reader (line-reader)
+  (read-zeek-header line-reader)
+  (let ((num-fields (length *field-names*)))
+    (lambda ()
+      (let ((line (funcall line-reader))
+            (ht (make-hash-table :size num-fields)))
+        (unless (or (not line)
+                    (char= #\# (char line 0)))
+          (loop for field in (str:split *zeek-field-separator* line)
+                for name in *field-names*
+                do (setf (gethash name ht) field)))
+        (unless (zerop (hash-table-count ht))
+          ht)))))
 
 (defun json-reader (line-reader)
-  (lambda ()
-    (ax:when-let ((line (funcall line-reader)))
-      (jzon:parse line :key-fn #'->keyword))))
+  (let ((num-fields 0))
+    (lambda ()
+      (ax:when-let* ((line (funcall line-reader))
+                     (json (jzon:parse line :key-fn #'->keyword)))
+        (when (> (hash-table-count json) num-fields)
+          (setf *field-names* (ax:hash-table-keys json))
+          (setf num-fields (length *field-names*)))
+        json))))
 
 (defun make-reader (stream)
   (multiple-value-bind (line-reader format) (sequence-line-reader stream)
     (ecase format
-      (:zeek (multiple-value-bind (field-names types) (read-zeek-header line-reader)
-               (zeek-reader line-reader field-names types)))
+      (:zeek (zeek-reader line-reader))
       (:json (json-reader line-reader)))))
 
 (defun decompress-if-needed (stream path)
@@ -96,14 +101,12 @@
           (chipz:make-decompressing-stream 'chipz:gzip stream))
          (t (error "Decompression unknown for file type of: ~a" path)))))
 
-;; TODO: In order to go from JSON input to Zeek output, I need to get the
-;; FIELD-NAMES for the row with the most JSON keys. You could make the readers
-;; return (VALUES ht MORE?) when you have a record and (VALUES FIELD-NAMES NIL)
-;; when the file has finished being read.
 (defun read-log (path)
-  (with-open-file (in path :element-type '(unsigned-byte 8))
-    (let* ((stream (decompress-if-needed in path))
-           (reader (make-reader stream)))
-      (loop for record = (funcall reader)
-            while record
-            collect record))))
+  (let (*field-names*)
+    (with-open-file (in path :element-type '(unsigned-byte 8))
+      (let* ((stream (decompress-if-needed in path))
+             (reader (make-reader stream)))
+        (values (loop for record = (funcall reader)
+                      while record
+                      collect record)
+                *field-names*)))))
