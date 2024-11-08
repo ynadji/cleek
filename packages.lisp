@@ -1,4 +1,3 @@
-(in-package :cl-user)
 (defpackage :cleek
   (:use :cl)
   (:local-nicknames (:ax :alexandria)
