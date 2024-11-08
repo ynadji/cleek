@@ -111,6 +111,25 @@
       (:zeek (zeek-reader line-reader))
       (:json (json-reader line-reader)))))
 
+(defun json-writer (stream field-names)
+  (lambda (record)
+    (write-sequence (record->bytes record field-names :json) stream)))
+
+(defun zeek-writer (stream field-names)
+  (write-sequence (babel:string-to-octets (generate-zeek-header field-names)) stream)
+  (values (lambda (record)
+            (write-sequence (record->bytes record field-names :zeek) stream))
+          (lambda () (write-sequence
+                 (babel:string-to-octets
+                  (format nil (format nil "#close~a~~a~%" *zeek-field-separator*)
+                          (timestamp-to-zeek-open-close-string (local-time:now))))
+                 stream))))
+
+(defun make-writer (stream field-names format)
+  (ecase format
+    (:zeek (zeek-writer stream field-names))
+    (:json (json-writer stream field-names))))
+
 (defun get-de/compression-func (filename compress?)
   (if compress?
       (cond ((str:ends-with? ".log" filename :ignore-case t)
