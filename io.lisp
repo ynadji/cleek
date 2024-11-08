@@ -168,7 +168,7 @@
     (when (eq output-format :zeek)
       (write-sequence
        (babel:string-to-octets
-        (format nil (format nil "#open~a~~a" *zeek-field-separator*)
+        (format nil (format nil "#close~a~~a~%" *zeek-field-separator*)
                 (timestamp-to-zeek-open-close-string (local-time:now))))
        stream))))
 
