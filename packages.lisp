@@ -4,4 +4,5 @@
                     (:na :netaddr)
                     (:dns :cl-dns)
                     (:tld :cl-tld)
-                    (:jzon :com.inuoe.jzon)))
+                    (:jzon :com.inuoe.jzon)
+                    (:t :transducers)))
