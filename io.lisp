@@ -129,15 +129,14 @@
             (t (error "No decompression implemented for file type: ~a" filename)))))
 
 (defmacro with-open-log ((stream filespec &rest options) &body body)
-  (declare (ignore stream))
   (ax:with-gensyms (io de/compressor)
     `(let ((,de/compressor (get-de/compression-func (file-namestring ,filespec)
                                                     ,(find :output options))))
        (if ,de/compressor
            (with-open-file (,io ,filespec :element-type '(unsigned-byte 8) ,@options)
-              (with-open-stream (stream (funcall ,de/compressor ,io))
+              (with-open-stream (,stream (funcall ,de/compressor ,io))
                 ,@body))
-           (with-open-file (stream ,filespec :element-type '(unsigned-byte 8) ,@options)
+           (with-open-file (,stream ,filespec :element-type '(unsigned-byte 8) ,@options)
               ,@body)))))
 
 (defun read-log (path)
