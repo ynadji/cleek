@@ -9,12 +9,20 @@
 (defvar *zeek-field-separator* #\Tab)
 (defvar *zeek-set-separator* #\,)
 (defvar *zeek-unset-field #\-)
+(defvar *zeek-open-close-time-format* '(:year "-" (:month 2) "-" (:day 2) "-" (:hour12 2) "-" (:min 2) "-" (:sec 2))
+  "Time format for #open and #close sections of Zeek format header and footer.")
 
 (defparameter *buffer-size* (expt 2 9)) ; you'll want to bump this. also prob be vars
 (defparameter *buffer* (make-array *buffer-size* :element-type '(unsigned-byte 8)))
 (defvar *newline-byte* (char-code #\Newline))
 
 (defun ->keyword (s) (ax:make-keyword (str:upcase s)))
+
+(defun timestamp-to-zeek-open-close-string (ts)
+  (local-time:format-timestring nil ts :format *zeek-open-close-time-format* :timezone local-time:+utc-zone+))
+
+(defun timestamp-to-zeek-ts-string (ts)
+  (format nil "~d.~6,'0d" (local-time:timestamp-to-unix ts) (local-time:nsec-of ts)))
 
 (defun shift-unfinished-sequence (buf start)
   (let ((read-index (- (length buf) start)))
@@ -48,6 +56,18 @@
                 (35 :zeek))))))
 
 (defvar *field-names* nil)
+
+(defun generate-zeek-header (field-names)
+  (let ((field-names (mapcar #'str:downcase (mapcar #'string field-names))))
+   (format nil "~a~%~a~%~a~%~a~%~a~%~a~%~a~%~a~%"
+           (format nil "#separator \\x~2,'0x" (char-code *zeek-field-separator*))
+           (format nil (format nil "#set_separator~a~~a" *zeek-field-separator*) *zeek-set-separator*)
+           (format nil (format nil "#empty_field~a~~a" *zeek-field-separator*) "(empty)")
+           (format nil (format nil "#unset_field~a~~a" *zeek-field-separator*) "-")
+           (format nil (format nil "#path~a~~a" *zeek-field-separator*) "cleek_path") ; TODO
+           (format nil (format nil "#open~a~~a" *zeek-field-separator*) (timestamp-to-zeek-open-close-string (local-time:now)))
+           (format nil (format nil "#fields~a~~a" *zeek-field-separator*) (str:join *zeek-field-separator* field-names))
+           (format nil (format nil "#types~a~~a" *zeek-field-separator*) (str:join *zeek-field-separator* (make-list (length field-names) :initial-element "string")))))) ; TODO
 
 (defun read-zeek-header (line-reader)
   (let ((types nil)
@@ -141,12 +161,16 @@
 (defun write-log (records field-names output-format path)
   (with-open-log (stream path :direction :output :if-exists :supersede)
    (when (eq output-format :zeek)
-     )
+     (write-sequence (babel:string-to-octets (generate-zeek-header field-names)) stream))
     (loop for record in records
           do (write-sequence (record->bytes record field-names output-format)
                              stream))
     (when (eq output-format :zeek)
-      )))
+      (write-sequence
+       (babel:string-to-octets
+        (format nil (format nil "#open~a~~a" *zeek-field-separator*)
+                (timestamp-to-zeek-open-close-string (local-time:now))))
+       stream))))
 
 (defun rw-test ()
   (multiple-value-bind (records field-names) (read-log #P"/Users/yacin/code/cleek/data/json/zstd/ssh.log.zst")
