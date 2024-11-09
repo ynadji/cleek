@@ -80,7 +80,5 @@
                                field))))
           (t (funcall (ax:assoc-value *zeek-stringify* type) field)))))
 
-;; TODO: maybe just dump the *types* in a special var too?
-;; TODO: make the zeek->zeek output good
 ;; TODO: in order to properly support JSON->Zeek transforms, you'll need to have a map of all
 ;; possible field names to the zeek types, which kinda sucks. does that matter? unclear.

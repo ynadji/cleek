@@ -1,11 +1,11 @@
 (in-package :cleek)
 
 (defun read-transform-write (in-path out-path &key (output-format :zeek))
-  (let (*field-names*)
+  (let (*field-names* *types*)
     (with-open-log (in in-path)
       (with-open-log (out out-path :direction :output :if-exists :supersede)
         (let ((reader (make-reader in)))
-          (multiple-value-bind (writer footer?) (make-writer out *field-names* output-format)
+          (multiple-value-bind (writer footer?) (make-writer out *field-names* output-format *types*)
             (loop for record = (funcall reader)
                   while record
                   do (funcall writer record))
@@ -19,11 +19,11 @@
 ;; knows to stop. it will probably be interesting to see how the LOOP vs.
 ;; T:TRANSDUCE implementations are different (perf- and code-wise).
 (defun read-transform-write-transducer (in-path out-path &key (output-format :zeek))
-  (let (*field-names*)
+  (let (*field-names* *types*)
     (with-open-log (in in-path)
       (with-open-log (out out-path :direction :output :if-exists :supersede)
         (let ((reader (make-reader in)))
-          (multiple-value-bind (writer footer?) (make-writer out *field-names* output-format)
+          (multiple-value-bind (writer footer?) (make-writer out *field-names* output-format *types*)
             (t:transduce (t:take-while #'identity)
                          (lambda (&optional acc record)
                            (declare (ignore acc))

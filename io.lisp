@@ -44,30 +44,36 @@
                 (35 :zeek))))))
 
 (defvar *field-names* nil)
+(defvar *types* nil)
 
-(defun generate-zeek-header (field-names)
+(defun generate-zeek-header (field-names types)
   (let ((field-names (mapcar #'str:downcase (mapcar #'string field-names))))
-   (format nil "~a~%~a~%~a~%~a~%~a~%~a~%~a~%~a~%"
-           (format nil "#separator \\x~2,'0x" (char-code *zeek-field-separator*))
-           (format nil (format nil "#set_separator~a~~a" *zeek-field-separator*) *zeek-set-separator*)
-           (format nil (format nil "#empty_field~a~~a" *zeek-field-separator*) *zeek-empty-field*)
-           (format nil (format nil "#unset_field~a~~a" *zeek-field-separator*) "-")
-           (format nil (format nil "#path~a~~a" *zeek-field-separator*) "cleek_path") ; TODO
-           (format nil (format nil "#open~a~~a" *zeek-field-separator*) (timestamp-to-zeek-open-close-string (local-time:now)))
-           (format nil (format nil "#fields~a~~a" *zeek-field-separator*) (str:join *zeek-field-separator* field-names))
-           (format nil (format nil "#types~a~~a" *zeek-field-separator*) (str:join *zeek-field-separator* (make-list (length field-names) :initial-element "string")))))) ; TODO
+    (format nil "~a~%~a~%~a~%~a~%~a~%~a~%~a~%~a~%"
+            (format nil "#separator \\x~2,'0x" (char-code *zeek-field-separator*))
+            (format nil (format nil "#set_separator~a~~a" *zeek-field-separator*) *zeek-set-separator*)
+            (format nil (format nil "#empty_field~a~~a" *zeek-field-separator*) *zeek-empty-field*)
+            (format nil (format nil "#unset_field~a~~a" *zeek-field-separator*) "-")
+            (format nil (format nil "#path~a~~a" *zeek-field-separator*) "cleek_path") ; TODO
+            (format nil (format nil "#open~a~~a" *zeek-field-separator*)
+                    (timestamp-to-zeek-open-close-string (local-time:now)))
+            (format nil (format nil "#fields~a~~a" *zeek-field-separator*)
+                    (str:join *zeek-field-separator* field-names))
+            (format nil (format nil "#types~a~~a" *zeek-field-separator*)
+                    (str:join *zeek-field-separator* (if types
+                                                         (mapcar #'keyword->string types)
+                                                         (make-list (length field-names)
+                                                                    :initial-element "not implemented"))))))) ; TODO
 
 (defun read-zeek-header (line-reader)
-  (let ((types nil)
-        (more-header? t))
+  (let ((more-header? t))
     (loop while more-header?
           for line = (funcall line-reader)
           when (str:starts-with? "#fields" line)
             do (setf *field-names* (mapcar #'string->keyword (rest (str:split *zeek-field-separator* line))))
           when (str:starts-with? "#types" line)
-            do (setf types (mapcar #'string->keyword (rest (str:split *zeek-field-separator* line)))
+            do (setf *types* (mapcar #'string->keyword (rest (str:split *zeek-field-separator* line)))
                      more-header? nil))
-    (values *field-names* types)))
+    (values *field-names* *types*)))
 
 (defun zeek-reader (line-reader)
   (read-zeek-header line-reader)
@@ -103,8 +109,8 @@
   (lambda (record)
     (write-sequence (record->bytes record field-names :json) stream)))
 
-(defun zeek-writer (stream field-names)
-  (write-sequence (babel:string-to-octets (generate-zeek-header field-names)) stream)
+(defun zeek-writer (stream field-names types)
+  (write-sequence (babel:string-to-octets (generate-zeek-header field-names types)) stream)
   (values (lambda (record)
             (write-sequence (record->bytes record field-names :zeek) stream))
           (lambda () (write-sequence
@@ -113,9 +119,9 @@
                           (timestamp-to-zeek-open-close-string (local-time:now))))
                  stream))))
 
-(defun make-writer (stream field-names format)
+(defun make-writer (stream field-names format &optional types)
   (ecase format
-    (:zeek (zeek-writer stream field-names))
+    (:zeek (zeek-writer stream field-names types))
     (:json (json-writer stream field-names))))
 
 (defun get-de/compression-func (filename compress?)
@@ -147,13 +153,14 @@
               ,@body)))))
 
 (defun read-log (path)
-  (let (*field-names*)
+  (let (*field-names* *types*)
     (with-open-log (stream path)
       (let ((reader (make-reader stream)))
         (values (loop for record = (funcall reader)
                       while record
                       collect record)
-                *field-names*)))))
+                *field-names*
+                *types*)))))
 
 (defun record->bytes (record field-names output-format)
   (case output-format
@@ -164,10 +171,10 @@
               (loop for field-name in field-names
                     collect (gethash field-name record "-")))))))
 
-(defun write-log (records field-names output-format path)
+(defun write-log (records field-names types output-format path)
   (with-open-log (stream path :direction :output :if-exists :supersede)
    (when (eq output-format :zeek)
-     (write-sequence (babel:string-to-octets (generate-zeek-header field-names)) stream))
+     (write-sequence (babel:string-to-octets (generate-zeek-header field-names types)) stream))
     (loop for record in records
           do (write-sequence (record->bytes record field-names output-format)
                              stream))
@@ -179,15 +186,21 @@
        stream))))
 
 (defun rw-test ()
-  (multiple-value-bind (records field-names) (read-log #P"/Users/yacin/code/cleek/data/json/zstd/conn.log.zst")
-    (write-log records field-names :zeek #P"/Users/yacin/tmp/out/conn.zeek.log"))
-  (multiple-value-bind (records field-names) (read-log #P"/Users/yacin/code/cleek/data/json/zstd/conn.log.zst")
-    (write-log records field-names :zeek #P"/Users/yacin/tmp/out/conn.zeek.log.zst"))
-  (multiple-value-bind (records field-names) (read-log #P"/Users/yacin/code/cleek/data/json/zstd/conn.log.zst")
-    (write-log records field-names :zeek #P"/Users/yacin/tmp/out/conn.zeek.log.gz"))
-  (multiple-value-bind (records field-names) (read-log #P"/Users/yacin/code/cleek/data/json/zstd/conn.log.zst")
-    (write-log records field-names :json #P"/Users/yacin/tmp/out/conn.json.log"))
-  (multiple-value-bind (records field-names) (read-log #P"/Users/yacin/code/cleek/data/json/zstd/conn.log.zst")
-    (write-log records field-names :json #P"/Users/yacin/tmp/out/conn.json.log.zst"))
-  (multiple-value-bind (records field-names) (read-log #P"/Users/yacin/code/cleek/data/json/zstd/conn.log.zst")
-    (write-log records field-names :json #P"/Users/yacin/tmp/out/conn.json.log.gz")))
+  (multiple-value-bind (records field-names types)
+      (read-log #P"/Users/yacin/code/cleek/data/zeek/zstd/conn.log.zst")
+    (write-log records field-names types :zeek #P"/Users/yacin/tmp/out/conn.zeek.log"))
+  (multiple-value-bind (records field-names types)
+      (read-log #P"/Users/yacin/code/cleek/data/zeek/zstd/conn.log.zst")
+    (write-log records field-names types :zeek #P"/Users/yacin/tmp/out/conn.zeek.log.zst"))
+  (multiple-value-bind (records field-names types)
+      (read-log #P"/Users/yacin/code/cleek/data/zeek/zstd/conn.log.zst")
+    (write-log records field-names types :zeek #P"/Users/yacin/tmp/out/conn.zeek.log.gz"))
+  (multiple-value-bind (records field-names types)
+      (read-log #P"/Users/yacin/code/cleek/data/zeek/zstd/conn.log.zst")
+    (write-log records field-names types :json #P"/Users/yacin/tmp/out/conn.json.log"))
+  (multiple-value-bind (records field-names types)
+      (read-log #P"/Users/yacin/code/cleek/data/zeek/zstd/conn.log.zst")
+    (write-log records field-names types :json #P"/Users/yacin/tmp/out/conn.json.log.zst"))
+  (multiple-value-bind (records field-names types)
+      (read-log #P"/Users/yacin/code/cleek/data/zeek/zstd/conn.log.zst")
+    (write-log records field-names types :json #P"/Users/yacin/tmp/out/conn.json.log.gz")))
