@@ -31,3 +31,42 @@
                          (t::make-generator :func reader))
             (when footer?
               (funcall footer?))))))))
+
+(defun cat/options ()
+  (list (clingon:make-option :string
+                             :description "Output file"
+                             :short-name #\o
+                             :long-name "output-file"
+                             :initial-value "-"
+                             :key :output)))
+
+(defun cat/handler (cmd)
+  (let ((args (clingon:command-arguments cmd))
+        (output-file (clingon:getopt cmd :output)))
+    (let (*field-names* *types* footer?)
+      (with-open-log (out output-file :direction :output :if-exists :supersede)
+        (loop for in-path in args do
+          (with-open-log (in in-path)
+            (let ((reader (make-reader in)))
+              (multiple-value-bind (writer f?) (make-writer out *field-names* :zeek *types*)
+                (setf footer? f?)
+                (t:transduce (t:take-while #'identity)
+                             (lambda (&optional acc record)
+                               (declare (ignore acc))
+                               (when record (funcall writer record)))
+                             (t::make-generator :func reader))))))
+        (when footer?
+          (funcall footer?))))))
+
+(defun cat/command ()
+  "Concatenate Zeek logs"
+  (clingon:make-command
+   :name "cat"
+   :usage "[log1 ... logN]"
+   :description "Concatenate Zeek logs"
+   :handler #'cat/handler
+   :options (cat/options)))
+
+(defun main ()
+  (let ((app (cat/command)))
+    (clingon:run app)))

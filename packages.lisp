@@ -5,4 +5,5 @@
                     (:dns :cl-dns)
                     (:tld :cl-tld)
                     (:jzon :com.inuoe.jzon)
-                    (:t :transducers)))
+                    (:t :transducers))
+  (:export :main))

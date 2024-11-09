@@ -1,3 +1,6 @@
+build:
+	sbcl --eval "(progn (asdf:make :cleek) (quit))"
+
 coverage:
 	sbcl --load coverage.lisp
 
