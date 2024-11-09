@@ -124,22 +124,22 @@
     (:zeek (zeek-writer stream field-names types))
     (:json (json-writer stream field-names))))
 
-(defun get-de/compression-func (filename compress?)
-  (if compress?
+(defun get-de/compression-func (filename output?)
+  (if output?
       (cond ((str:ends-with? ".log" filename :ignore-case t)
              nil)
             ((str:ends-with? ".zst" filename :ignore-case t)
              (lambda (stream) (zstd:make-compressing-stream stream)))
             ((str:ends-with? ".gz" filename :ignore-case t)
              (lambda (stream) (salza2:make-compressing-stream 'salza2:gzip-compressor stream)))
-            (t (error "No compression implemented for file type: ~a" filename)))
+            (t nil))
       (cond ((str:ends-with? ".log" filename :ignore-case t)
              nil)
             ((str:ends-with? ".zst" filename :ignore-case t)
              (lambda (stream) (zstd:make-decompressing-stream stream)))
             ((str:ends-with? ".gz" filename :ignore-case t)
              (lambda (stream) (chipz:make-decompressing-stream 'chipz:gzip stream)))
-            (t (error "No decompression implemented for file type: ~a" filename)))))
+            (t nil))))
 
 (defmacro with-open-log ((stream filespec &rest options) &body body)
   (ax:with-gensyms (io de/compressor)

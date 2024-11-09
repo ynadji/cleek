@@ -37,9 +37,11 @@
                              :description "Output file"
                              :short-name #\o
                              :long-name "output-file"
-                             :initial-value "-"
+                             :initial-value "/dev/tty"
                              :key :output)))
 
+;; also need a good way to handle not dumping the header and footer all the
+;; time.
 (defun cat/handler (cmd)
   (let ((args (clingon:command-arguments cmd))
         (output-file (clingon:getopt cmd :output)))
