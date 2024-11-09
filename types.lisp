@@ -1,5 +1,7 @@
 (in-package :cleek)
 
+(setf *read-default-float-format* 'double-float)
+
 (defvar *zeek-set-separator* #\,)
 (defvar *zeek-unset-field* #\-)
 (defvar *zeek-empty-field* "(empty)")
@@ -35,6 +37,19 @@
     (:enum . ,#'identity) ; just keep it as a string i suppose
     ))
 
+(defparameter *zeek-stringify*
+  `((:bool . ,(lambda (x) (if x "T" "F")))
+    (:count . ,#'write-to-string)
+    (:int . ,#'write-to-string)
+    (:double . ,(lambda (x) (format nil "~,6f" x)))
+    (:time . ,#'timestamp-to-zeek-ts-string)
+    (:interval . ,(lambda (x) (format nil "~,6f" x)))
+    (:string . ,#'identity)
+    (:port . ,#'string)
+    (:addr . ,(lambda (x) (str:downcase (na:str x))))
+    (:subnet . ,(lambda (x) (str:downcase (na:str x))))
+    (:enum . ,#'identity)))
+
 ;; TODO: might be premature optimization, but maybe:
 ;; check for unset/empty
 ;; check for primitive-type with when-let
@@ -52,7 +67,19 @@
                      (str:split *zeek-set-separator* field))))
           (t (funcall (ax:assoc-value *zeek-primitive-type-parsers* type) field)))))
 
-;; TODO: lisp to zeek type (mostly for string formatting)
+(defun unparse-zeek-type (field type)
+  (let ((type-string (keyword->string type)))
+    (cond ((stringp field)
+           field)
+          ((or (str:starts-with? "set" type-string)
+               (str:starts-with? "vector" type-string))
+           (cl-ppcre:register-groups-bind (nil primitive-type) 
+               ("(set|vector)\\[(.*?)\\]" type-string)
+             (str:join *zeek-set-separator*
+                       (mapcar (lambda (f) (unparse-zeek-type f (string->keyword primitive-type)))
+                               field))))
+          (t (funcall (ax:assoc-value *zeek-stringify* type) field)))))
+
 ;; TODO: maybe just dump the *types* in a special var too?
 ;; TODO: make the zeek->zeek output good
 ;; TODO: in order to properly support JSON->Zeek transforms, you'll need to have a map of all
