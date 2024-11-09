@@ -53,4 +53,7 @@
           (t (funcall (ax:assoc-value *zeek-primitive-type-parsers* type) field)))))
 
 ;; TODO: lisp to zeek type (mostly for string formatting)
-;; TODO: add tests
+;; TODO: maybe just dump the *types* in a special var too?
+;; TODO: make the zeek->zeek output good
+;; TODO: in order to properly support JSON->Zeek transforms, you'll need to have a map of all
+;; possible field names to the zeek types, which kinda sucks. does that matter? unclear.
