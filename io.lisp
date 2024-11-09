@@ -7,22 +7,10 @@
 (defvar *output-compression* :txt) ; or :zstd or :gzip
 
 (defvar *zeek-field-separator* #\Tab)
-(defvar *zeek-set-separator* #\,)
-(defvar *zeek-unset-field #\-)
-(defvar *zeek-open-close-time-format* '(:year "-" (:month 2) "-" (:day 2) "-" (:hour12 2) "-" (:min 2) "-" (:sec 2))
-  "Time format for #open and #close sections of Zeek format header and footer.")
 
 (defparameter *buffer-size* (expt 2 9)) ; you'll want to bump this. also prob be vars
 (defparameter *buffer* (make-array *buffer-size* :element-type '(unsigned-byte 8)))
 (defvar *newline-byte* (char-code #\Newline))
-
-(defun ->keyword (s) (ax:make-keyword (str:upcase s)))
-
-(defun timestamp-to-zeek-open-close-string (ts)
-  (local-time:format-timestring nil ts :format *zeek-open-close-time-format* :timezone local-time:+utc-zone+))
-
-(defun timestamp-to-zeek-ts-string (ts)
-  (format nil "~d.~6,'0d" (local-time:timestamp-to-unix ts) (local-time:nsec-of ts)))
 
 (defun shift-unfinished-sequence (buf start)
   (let ((read-index (- (length buf) start)))
@@ -62,7 +50,7 @@
    (format nil "~a~%~a~%~a~%~a~%~a~%~a~%~a~%~a~%"
            (format nil "#separator \\x~2,'0x" (char-code *zeek-field-separator*))
            (format nil (format nil "#set_separator~a~~a" *zeek-field-separator*) *zeek-set-separator*)
-           (format nil (format nil "#empty_field~a~~a" *zeek-field-separator*) "(empty)")
+           (format nil (format nil "#empty_field~a~~a" *zeek-field-separator*) *zeek-empty-field*)
            (format nil (format nil "#unset_field~a~~a" *zeek-field-separator*) "-")
            (format nil (format nil "#path~a~~a" *zeek-field-separator*) "cleek_path") ; TODO
            (format nil (format nil "#open~a~~a" *zeek-field-separator*) (timestamp-to-zeek-open-close-string (local-time:now)))
@@ -75,9 +63,9 @@
     (loop while more-header?
           for line = (funcall line-reader)
           when (str:starts-with? "#fields" line)
-            do (setf *field-names* (mapcar #'->keyword (rest (str:split *zeek-field-separator* line))))
+            do (setf *field-names* (mapcar #'string->keyword (rest (str:split *zeek-field-separator* line))))
           when (str:starts-with? "#types" line)
-            do (setf types (mapcar #'->keyword (rest (str:split *zeek-field-separator* line)))
+            do (setf types (mapcar #'string->keyword (rest (str:split *zeek-field-separator* line)))
                      more-header? nil))
     (values *field-names* types)))
 
@@ -99,7 +87,7 @@
   (let ((num-fields 0))
     (lambda ()
       (ax:when-let* ((line (funcall line-reader))
-                     (json (jzon:parse line :key-fn #'->keyword)))
+                     (json (jzon:parse line :key-fn #'string->keyword)))
         (when (> (hash-table-count json) num-fields)
           (setf *field-names* (ax:hash-table-keys json))
           (setf num-fields (length *field-names*)))

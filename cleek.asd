@@ -5,6 +5,7 @@
   :license "MIT"
   :depends-on ("str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns" "com.inuoe.jzon" "zstd" "chipz" "salza2" "babel" "local-time" "transducers")
   :components ((:file "packages")
+               (:file "types")
                (:file "io")
                (:file "main"))
   :in-order-to ((test-op (test-op :cleek/tests))))
