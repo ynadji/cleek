@@ -45,6 +45,7 @@
 
 (defvar *field-names* nil)
 (defvar *types* nil)
+(defvar *header-already-printed?* nil)
 
 (defun generate-zeek-header (field-names types)
   (let ((field-names (mapcar #'str:downcase (mapcar #'string field-names))))
@@ -109,15 +110,22 @@
   (lambda (record)
     (write-sequence (record->bytes record field-names :json) stream)))
 
+;; TODO: FIELD-NAMES and TYPES should just default to the dynamic variables. it
+;; doesn't matter now, but when you're adding fields (add e2ld or bin to /24)
+;; you'll want to be able to handle that in the caller rather than here.
 (defun zeek-writer (stream field-names types)
-  (write-sequence (babel:string-to-octets (generate-zeek-header field-names types)) stream)
   (values (lambda (record)
             (write-sequence (record->bytes record field-names :zeek) stream))
-          (lambda () (write-sequence
-                 (babel:string-to-octets
-                  (format nil (format nil "#close~a~~a~%" *zeek-field-separator*)
-                          (timestamp-to-zeek-open-close-string (local-time:now))))
-                 stream))))
+          (lambda ()
+            (unless *header-already-printed?*
+              (write-sequence (babel:string-to-octets (generate-zeek-header field-names types)) stream)
+              (setf *header-already-printed?* t)))
+          (lambda ()
+            (write-sequence
+             (babel:string-to-octets
+              (format nil (format nil "#close~a~~a~%" *zeek-field-separator*)
+                      (timestamp-to-zeek-open-close-string (local-time:now))))
+             stream))))
 
 (defun make-writer (stream field-names format &optional types)
   (ecase format
