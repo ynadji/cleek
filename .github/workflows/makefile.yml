@@ -1,0 +1,63 @@
+name: CI build for CLEEK
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+# (load "~/quicklisp/setup.lisp") (ql:add-to-init-file)
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Foo
+      run: sudo mkdir ~/common-lisp
+    - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
+      with:
+        repository: ynadji/netaddr
+        path: common-lisp/netaddr
+    - uses: actions/checkout@v4
+      with:
+        repository: ynadji/cl-dns
+        path: common-lisp/cl-dns
+    - uses: actions/checkout@v4
+      with:
+        repository: lu4nx/cl-tld
+        path: common-lisp/cl-tld
+
+    - name: Install SBCL
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y sbcl zstd
+        sudo curl -O https://beta.quicklisp.org/quicklisp.lisp
+        sudo sbcl --load quicklisp.lisp --eval '(progn (quicklisp-quickstart:install) (quit))'
+
+        sudo ls -al /root/quicklisp
+        sudo mv common-lisp /root/
+        sudo ls -al /root/common-lisp
+
+        echo #-quicklisp > .sbclrc
+        echo '(let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname)))) (when (probe-file quicklisp-init) (load quicklisp-init)))' >> .sbclrc
+
+        sudo mv .sbclrc /root
+        sudo cat /root/.sbclrc
+
+        sudo sbcl --eval '(ql:quickload (list "str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns" "com.inuoe.jzon" "zstd" "chipz" "salza2" "babel" "local-time" "transducers" "clingon" "deploy" "fiveam"))'
+
+        sudo ln -s $(pwd) /root/common-lisp/
+
+    - name: Test CLEEK
+      run: sudo make test
+
+    - name: Build CLEEK
+      run: sudo make
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: lisp-bin
+        path: bin
+        overwrite: true
