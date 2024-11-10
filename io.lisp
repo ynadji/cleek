@@ -8,7 +8,7 @@
 
 (defvar *zeek-field-separator* #\Tab)
 
-(defparameter *buffer-size* (expt 2 9)) ; you'll want to bump this. also prob be vars
+(defparameter *buffer-size* (expt 2 16)) ; i used 32MB! before for very long log lines hmm.
 (defparameter *buffer* (make-array *buffer-size* :element-type '(unsigned-byte 8)))
 (defvar *newline-byte* (char-code #\Newline))
 
