@@ -44,7 +44,7 @@
                              :description "Output file"
                              :short-name #\o
                              :long-name "output-file"
-                             :initial-value "/dev/tty"
+                             :initial-value "/dev/stdout"
                              :key :output)))
 
 ;; also need a good way to handle not dumping the header and footer all the
@@ -76,7 +76,7 @@
   (clingon:make-command
    :name "cleek"
    :version "0.1.0"
-   :usage "[log1 ... logN]"
+   :usage "[ZEEK-LOG]..."
    :description "Concatenate Zeek logs"
    :handler #'cat/handler
    :options (cat/options)))
