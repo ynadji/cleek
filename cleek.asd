@@ -24,4 +24,7 @@
                                                                  '#:cleek/tests))
                                  (symbol-call :fiveam '#:run!
                                               (uiop:find-symbol* '#:types
+                                                                 '#:cleek/tests))
+                                 (symbol-call :fiveam '#:run!
+                                              (uiop:find-symbol* '#:end-to-end
                                                                  '#:cleek/tests)))))

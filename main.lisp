@@ -47,8 +47,28 @@
                              :initial-value "/dev/stdout"
                              :key :output)))
 
-;; also need a good way to handle not dumping the header and footer all the
-;; time.
+(defun cat-logs (output-file output-format &rest input-files)
+  (when input-files
+   (let (*field-names* *types* write-footer *header-already-printed?*)
+     (with-open-log (in (first input-files))
+       (funcall (make-reader in))) ; read a record so we can get the field-names/types.
+     (with-open-log (out output-file :direction :output :if-exists :supersede)
+       (loop for in-path in input-files do
+         (with-open-log (in in-path)
+           (let ((reader (make-reader in)))
+             (multiple-value-bind (writer write-header w-f)
+                 (make-writer out output-format)
+               (setf write-footer w-f)
+               (when write-header
+                 (funcall write-header))
+               (t:transduce (t:take-while #'identity)
+                            (lambda (&optional acc record)
+                              (declare (ignore acc))
+                              (when record (funcall writer record)))
+                            (t::make-generator :func reader))))))
+       (when write-footer
+         (funcall write-footer))))))
+
 (defun cat/handler (cmd)
   (let ((args (clingon:command-arguments cmd))
         (output-file (clingon:getopt cmd :output)))

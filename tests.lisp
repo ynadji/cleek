@@ -10,7 +10,8 @@
                 #:make-timestamp)
   (:import-from #:cleek
                 #:parse-zeek-type
-                #:unparse-zeek-type)
+                #:unparse-zeek-type
+                #:cat-logs)
   (:export #:tests))
 
 (in-package :cleek/tests)
@@ -19,6 +20,7 @@
 
 (def-suite tests)
 (def-suite types)
+(def-suite end-to-end)
 
 (in-suite tests)
 
@@ -97,3 +99,36 @@
   (is (string= "google.com,foo.bar,bing.bong"
                (unparse-zeek-type (parse-zeek-type "google.com,foo.bar,bing.bong" :set[string])
                                   :set[string]))))
+
+(in-suite end-to-end)
+
+(defvar *test-inputs-dir* (asdf:system-relative-pathname "cleek" "data/test-inputs/"))
+(defvar *zeek-baselines-dir* (asdf:system-relative-pathname "cleek" "data/baselines/zeek/"))
+(defvar *json-baselines-dir* (asdf:system-relative-pathname "cleek" "data/baselines/json/"))
+(defvar *diff-script* (asdf:system-relative-pathname "cleek" "scripts/diff.sh"))
+
+(defvar *update-baselines* t)
+
+(test read-write-log
+  (loop for test-input in (uiop:directory-files *test-inputs-dir*) do
+    (loop for suffix in '("log" "log.gz" "log.zst")
+          for output-file = (merge-pathnames (uiop:temporary-directory)
+                                             (format nil "conn.~a" suffix))
+          for output-type in '(:zeek :json) do
+            (loop for baseline-file in (uiop:directory-files (ecase output-type
+                                                               (:zeek *zeek-baselines-dir*)
+                                                               (:json *json-baselines-dir*)))
+                  do
+                     (cat-logs output-file output-type test-input)
+                     (format t "~%Input: ~a~&Output: ~a~&Baseline: ~a~&Output type: ~a~&"
+                             test-input output-file baseline-file output-type)
+                     (multiple-value-bind (stdout stderr exit-code)
+                         (uiop:run-program (format nil "~a ~a ~a"
+                                                   *diff-script* baseline-file output-file)
+                                        ;:ignore-error-status t
+                                           )
+
+                       (declare (ignorable stdout stderr))
+                       (is (zerop exit-code)
+                           "~%Input: ~a~&Output: ~a~&Baseline: ~a~&Output type: ~a~&Exit code: ~a~%~%Diff: ~a"
+                           test-input output-file baseline-file output-type exit-code stderr))))))

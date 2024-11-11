@@ -19,6 +19,7 @@
     read-index))
 
 (defun sequence-line-reader (stream)
+  (declare (optimize (speed 3)))
   (let ((start 0)
         (eof? nil)
         (first-byte (setf (aref *buffer* 0)
@@ -106,19 +107,20 @@
       (:zeek (zeek-reader line-reader))
       (:json (json-reader line-reader)))))
 
-(defun json-writer (stream field-names)
+(defun json-writer (stream &optional field-names)
   (lambda (record)
     (write-sequence (record->bytes record field-names :json) stream)))
 
 ;; TODO: FIELD-NAMES and TYPES should just default to the dynamic variables. it
 ;; doesn't matter now, but when you're adding fields (add e2ld or bin to /24)
 ;; you'll want to be able to handle that in the caller rather than here.
-(defun zeek-writer (stream field-names types)
+(defun zeek-writer (stream)
   (values (lambda (record)
-            (write-sequence (record->bytes record field-names :zeek) stream))
+            ;; can i buffer these so i write fewer times?
+            (write-sequence (record->bytes record *field-names* :zeek) stream))
           (lambda ()
             (unless *header-already-printed?*
-              (write-sequence (babel:string-to-octets (generate-zeek-header field-names types)) stream)
+              (write-sequence (babel:string-to-octets (generate-zeek-header *field-names* *types*)) stream)
               (setf *header-already-printed?* t)))
           (lambda ()
             (write-sequence
@@ -127,11 +129,13 @@
                       (timestamp-to-zeek-open-close-string (local-time:now))))
              stream))))
 
-(defun make-writer (stream field-names format &optional types)
+(defun make-writer (stream format &optional (field-names *field-names*) (types *types*))
+  (declare (ignorable field-names types))
   (ecase format
-    (:zeek (zeek-writer stream field-names types))
-    (:json (json-writer stream field-names))))
+    (:zeek (zeek-writer stream))
+    (:json (json-writer stream))))
 
+;; TODO: Fix zst.
 (defun get-de/compression-func (filename output?)
   (if output?
       (cond ((str:ends-with? ".log" filename :ignore-case t)
