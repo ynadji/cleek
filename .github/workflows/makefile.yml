@@ -46,9 +46,8 @@ jobs:
         sudo mv .sbclrc /root
         sudo cat /root/.sbclrc
 
-        sudo sbcl --eval '(ql:quickload (list "str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns" "com.inuoe.jzon" "zstd" "chipz" "salza2" "babel" "local-time" "transducers" "clingon" "deploy" "fiveam"))'
-
         sudo ln -s $(pwd) /root/common-lisp/
+        sudo sbcl --eval '(ql:quickload (list "cleek" "fiveam"))'
 
     - name: Test CLEEK
       run: sudo make test
