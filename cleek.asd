@@ -17,7 +17,7 @@
 (asdf:defsystem :cleek/tests
   :author "Yacin Nadji <yacin@defmacro.cc>"
   :license "MIT"
-  :depends-on ("cleek" "fiveam")
+  :depends-on ("cleek" "fiveam" "str")
   :components ((:file "tests"))
   :perform (test-op (o c) (progn (symbol-call :fiveam '#:run!
                                               (uiop:find-symbol* '#:tests
