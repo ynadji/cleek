@@ -8,6 +8,8 @@
 
 (defvar *zeek-field-separator* #\Tab)
 
+(declaim (type fixnum *buffer-size*)
+         (type (simple-array (unsigned-byte 8) *) *buffer*))
 (defparameter *buffer-size* (expt 2 16)) ; i used 32MB! before for very long log lines hmm.
 (defparameter *buffer* (make-array *buffer-size* :element-type '(unsigned-byte 8)))
 (defvar *newline-byte* (char-code #\Newline))
@@ -24,6 +26,7 @@
         (eof? nil)
         (first-byte (setf (aref *buffer* 0)
                           (read-byte stream nil))))
+    (declare (type fixnum start))
     (read-sequence *buffer* stream :start 1) ; we already read the first byte above.
     (labels ((slr ()
                (when eof?
@@ -109,7 +112,9 @@
 
 (defun json-writer (stream &optional field-names)
   (lambda (record)
-    (write-sequence (record->bytes record field-names :json) stream)))
+    (let ((seq (record->bytes record field-names :json)))
+      (declare (type (simple-array (unsigned-byte 8) *) seq))
+      (write-sequence seq stream))))
 
 ;; TODO: FIELD-NAMES and TYPES should just default to the dynamic variables. it
 ;; doesn't matter now, but when you're adding fields (add e2ld or bin to /24)
@@ -117,7 +122,9 @@
 (defun zeek-writer (stream)
   (values (lambda (record)
             ;; can i buffer these so i write fewer times?
-            (write-sequence (record->bytes record *field-names* :zeek) stream))
+            (let ((seq (record->bytes record *field-names* :zeek)))
+              (declare (type (simple-array (unsigned-byte 8) *) seq))
+              (write-sequence seq stream)))
           (lambda ()
             (unless *header-already-printed?*
               (write-sequence (babel:string-to-octets (generate-zeek-header *field-names* *types*)) stream)
