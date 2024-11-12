@@ -1,5 +1,13 @@
 (in-package :cleek)
 
+;; from fleek to support:
+;;
+;; * annotations (IP-LIKEs, default columns, default new column namer, modify at runtime)
+;; * DNS additions
+;; * modify column (turn /32 to /24 or w/e)
+;; * timestamp filter
+;; * productive (these can be handled in general by filters)
+
 ;; TODO: WITH-WRITER to handle the header/footer mumbo jumbo. hmm, that won't
 ;; work in the case where we have multiple readers and one writer... probably
 ;; doesn't need to be abstracted that much.
@@ -16,6 +24,17 @@
                   do (funcall writer record))
             (when write-footer
               (funcall write-footer))))))))
+
+;; how can i know if i need to parse the value from the hash-table or not? i
+;; think i'm going to need to have this map of field-names to types at runtime.
+
+(defun compile-runtime-filters (s)
+  (let ((filters (subst-if '(gethash :original-key record)
+                           #'keywordp
+                           (with-input-from-string (in s)
+                             (read in nil)))))
+    (values (compile nil `(lambda (record) ,filters))
+            filters)))
 
 ;; TODO: how easy is it to build up transducers? you probably need a macro that
 ;; takes a bunch of existing functions (or forms) that get T:COMPd together in
@@ -72,22 +91,12 @@
 (defun cat/handler (cmd)
   (let ((args (clingon:command-arguments cmd))
         (output-file (clingon:getopt cmd :output)))
-    (let (*field-names* *types* write-footer *header-already-printed?*)
-      (with-open-log (out output-file :direction :output :if-exists :supersede)
-        (loop for in-path in args do
-          (with-open-log (in in-path)
-            (let ((reader (make-reader in)))
-              (multiple-value-bind (writer write-header w-f) (make-writer out *field-names* :zeek *types*)
-                (setf write-footer w-f)
-                (when write-header
-                  (funcall write-header))
-                (t:transduce (t:take-while #'identity)
-                             (lambda (&optional acc record)
-                               (declare (ignore acc))
-                               (when record (funcall writer record)))
-                             (t::make-generator :func reader))))))
-        (when write-footer
-          (funcall write-footer))))))
+    (apply #'cat-logs output-file :zeek args)))
+
+(defun wip-compile-filter-expression ()
+  (let ((func (compile-runtime-filters "(or (string= \"foo\" :bar) (string= \"baz\" :bar))")))
+    (print (funcall func (serapeum:dict :original-key "baz")))
+    (print (funcall func (serapeum:dict :original-key "bong")))))
 
 ;; TODO: also read from *stdin*? less important since i can directly read
 ;; compressed files.
