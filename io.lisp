@@ -111,29 +111,30 @@
       (:json (json-reader line-reader)))))
 
 (defun json-writer (stream &optional field-names)
+  (declare (optimize (speed 3)))
   (lambda (record)
-    (let ((seq (record->bytes record field-names :json)))
-      (declare (type (simple-array (unsigned-byte 8) *) seq))
-      (write-sequence seq stream))))
+    (write-sequence (the (simple-array (unsigned-byte 8) *)
+                         (record->bytes record field-names :json)) stream)))
 
 ;; TODO: FIELD-NAMES and TYPES should just default to the dynamic variables. it
 ;; doesn't matter now, but when you're adding fields (add e2ld or bin to /24)
 ;; you'll want to be able to handle that in the caller rather than here.
 (defun zeek-writer (stream)
+  (declare (optimize (speed 3)))
   (values (lambda (record)
             ;; can i buffer these so i write fewer times?
-            (let ((seq (record->bytes record *field-names* :zeek)))
-              (declare (type (simple-array (unsigned-byte 8) *) seq))
-              (write-sequence seq stream)))
+            (write-sequence (the (simple-array (unsigned-byte 8) *)
+                                 (record->bytes record *field-names* :zeek)) stream))
           (lambda ()
             (unless *header-already-printed?*
-              (write-sequence (babel:string-to-octets (generate-zeek-header *field-names* *types*)) stream)
+              (write-sequence (the (simple-array (unsigned-byte 8) *) (babel:string-to-octets (generate-zeek-header *field-names* *types*))) stream)
               (setf *header-already-printed?* t)))
           (lambda ()
             (write-sequence
-             (babel:string-to-octets
-              (format nil (format nil "#close~a~~a~%" *zeek-field-separator*)
-                      (timestamp-to-zeek-open-close-string (local-time:now))))
+             (the (simple-array (unsigned-byte 8) *)
+                  (babel:string-to-octets
+                   (format nil (format nil "#close~a~~a~%" *zeek-field-separator*)
+                           (timestamp-to-zeek-open-close-string (local-time:now)))))
              stream))))
 
 (defun make-writer (stream format &optional (field-names *field-names*) (types *types*))
