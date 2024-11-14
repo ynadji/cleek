@@ -122,9 +122,9 @@
 (defun zeek-writer (stream)
   (declare (optimize (speed 3)))
   (values (lambda (record)
-            ;; can i buffer these so i write fewer times?
             (write-sequence (the (simple-array (unsigned-byte 8) *)
-                                 (record->bytes record *field-names* :zeek)) stream))
+                                 (record->bytes record *field-names* :zeek)) stream)
+            (write-byte 10 stream))
           (lambda ()
             (unless *header-already-printed?*
               (write-sequence (the (simple-array (unsigned-byte 8) *) (babel:string-to-octets (generate-zeek-header *field-names* *types*))) stream)
@@ -187,9 +187,9 @@
     (:json (babel:string-to-octets (format nil "~a~%" (jzon:stringify record))))
     (:zeek ;; this is incomplete until you handle JSON arrays (when going from json->zeek).
      (babel:string-to-octets
-      (format nil (format nil "~~{~~a~~^~C~~}~~%" *zeek-field-separator*)
-              (loop for field-name in field-names
-                    collect (gethash field-name record "-")))))))
+      (str:join *zeek-field-separator*
+                (loop for field-name in field-names
+                      collect (gethash field-name record "-")))))))
 
 (defun write-log (records field-names types output-format path)
   (with-open-log (stream path :direction :output :if-exists :supersede)
