@@ -88,6 +88,18 @@
        (when write-footer
          (funcall write-footer))))))
 
+(defun cat-seq-copy (output-file &rest input-files)
+  (declare (optimize (speed 3) (safety 1)))
+  (when input-files
+    (let ((buf (make-array 8192 :element-type '(unsigned-byte 8))))
+      (declare (type (simple-array (unsigned-byte 8) *) buf))
+      (with-open-file (out output-file :direction :output :if-exists :supersede :element-type '(unsigned-byte 8))
+        (loop for in-path in input-files do
+          (with-open-file (in in-path :element-type '(unsigned-byte 8))
+            (loop for pos = (read-sequence buf in)
+                  while (> pos 0)
+                  do (write-sequence (subseq buf 0 pos) out))))))))
+
 (defun cat/handler (cmd)
   (let ((args (clingon:command-arguments cmd))
         (output-file (clingon:getopt cmd :output)))

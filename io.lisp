@@ -14,6 +14,14 @@
 (defparameter *buffer* (make-array *buffer-size* :element-type '(unsigned-byte 8)))
 (defvar *newline-byte* (char-code #\Newline))
 
+;; what should the struct contain?
+;;
+;; * just the raw bytes
+;; * parse-status to say how deeply we've parsed the data structure.
+;;
+;; if we want don't need to parse anything, we just dump the bytes back out. if
+;; we need to parse field X, we can just find it in the bytes and directly.
+
 (defun shift-unfinished-sequence (buf start)
   (let ((read-index (- (length buf) start)))
     (replace buf buf :start1 0 :start2 start)
