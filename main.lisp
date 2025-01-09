@@ -91,7 +91,7 @@
 (defun cat/handler (cmd)
   (let ((args (clingon:command-arguments cmd))
         (output-file (clingon:getopt cmd :output)))
-    (apply #'cat-logs output-file :zeek args)))
+    (apply #'cat-logs output-file (if (str:contains? ".json" output-file) :json :zeek) args)))
 
 (defun wip-compile-filter-expression ()
   (let ((func (compile-runtime-filters "(or (string= \"foo\" :bar) (string= \"baz\" :bar))")))

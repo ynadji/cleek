@@ -176,7 +176,10 @@
 
 (defun record->bytes (record field-names output-format)
   (case output-format
-    (:json (babel:string-to-octets (format nil "~a~%" (jzon:stringify record))))
+    (:json (babel:string-to-octets
+            (format nil "~a~%"
+                    (jzon:stringify record
+                                    :replacer (lambda (k v) (not (equal "-" v)))))))
     (:zeek ;; this is incomplete until you handle JSON arrays (when going from json->zeek).
      (babel:string-to-octets
       (format nil (format nil "~~{~~a~~^~C~~}~~%" *zeek-field-separator*)
