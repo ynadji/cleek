@@ -151,7 +151,8 @@
     (:zeek (zeek-writer stream))
     (:json (json-writer stream))))
 
-;; TODO: Fix zst.
+;; TODO: Fix zst. What if it's the version of the zstd library that's the issue?
+;; hmm, well then why does ecl work fine?
 (defun get-de/compression-func (filename output?)
   (if output?
       (cond ((str:ends-with? ".log" filename :ignore-case t)

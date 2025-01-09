@@ -88,6 +88,13 @@
        (when write-footer
          (funcall write-footer))))))
 
+;; tl;dr: the SUBSEQ doesn't make this much slower. what about putting it into a
+;; struct tho? test/compare:
+;;
+;; * fleek
+;; * current version using CAT-LOGS
+;; * using CAT-SEQ-COPY
+;; * CAT-SEQ-COPY but you add things to a struct so you know your lower bound in speed.
 (defun cat-seq-copy (output-file &rest input-files)
   (declare (optimize (speed 3) (safety 1)))
   (when input-files
@@ -99,6 +106,12 @@
             (loop for pos = (read-sequence buf in)
                   while (> pos 0)
                   do (write-sequence (subseq buf 0 pos) out))))))))
+
+(defun stream-copy-logs (output-file &rest input-files)
+  (with-open-file (out output-file :direction :output :if-exists :supersede)
+    (loop for input-file in input-files do
+      (with-open-file (in input-file)
+        (uiop:copy-stream-to-stream in out)))))
 
 (defun cat/handler (cmd)
   (let ((args (clingon:command-arguments cmd))
