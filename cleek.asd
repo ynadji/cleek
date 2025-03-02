@@ -9,7 +9,7 @@
                (:file "io")
                (:file "main"))
   :defsystem-depends-on (:deploy)
-  :build-operation "deploy-op"
+  :build-operation "deploy-console-op"
   :build-pathname "cleek"
   :entry-point "cleek:main"
   :in-order-to ((test-op (test-op :cleek/tests))))

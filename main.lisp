@@ -64,7 +64,21 @@
                              :short-name #\o
                              :long-name "output-file"
                              :initial-value "/dev/stdout"
-                             :key :output)))
+                             :key :output)
+        (clingon:make-option :choice
+                             :description "Output format"
+                             :short-name #\f
+                             :long-name "output-format"
+                             :items '("zeek" "json")
+                             :initial-value "zeek"
+                             :key :format)
+        (clingon:make-option :choice
+                             :description "Output compression"
+                             :short-name #\c
+                             :long-name "output-compression"
+                             :items '("none" "gzip" "zstd")
+                             :initial-value "none"
+                             :key :compression)))
 
 (defun cat-logs (output-file output-format &rest input-files)
   (when input-files
@@ -88,20 +102,20 @@
        (when write-footer
          (funcall write-footer))))))
 
-(defun cat-logs-string (output-file &rest input-files)
+(defun cat-logs-string (output-file output-format &rest input-files)
   (with-open-file (out output-file :direction :output :if-exists :supersede)
     (if (zerop (length input-files))
         (with-open-file (in "/dev/stdin")
-         (let ((zeek-log (open-zeek-log :stream in)))
-           (format out "~{~a~^~%~}~%" (zeek-raw-header zeek-log))
-           (loop while (zeek-line zeek-log)
-                 do (write-line (zeek-line zeek-log) out)
-                    (next-record zeek-log))))
+          (let ((zeek-log (open-zeek-log :stream in)))
+            (format out "~{~a~^~%~}~%" (zeek-raw-header zeek-log))
+            (loop while (zeek-line zeek-log)
+                  do (write-zeek-log-line zeek-log out output-format)
+                     (next-record zeek-log))))
         (loop for in-path in input-files do
           (with-zeek-log (zeek-log in-path)
             (format out "~{~a~^~%~}~%" (zeek-raw-header zeek-log))
             (loop while (zeek-line zeek-log)
-                  do (write-line (zeek-line zeek-log) out)
+                  do (write-zeek-log-line zeek-log out output-format)
                      (next-record zeek-log)))))
     (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
             (timestamp-to-zeek-open-close-string (local-time:now)))))
@@ -117,12 +131,15 @@
             (timestamp-to-zeek-open-close-string (local-time:now)))))
 
 (defun perf-test (&optional (path #P"~/tmp/test2.log"))
-  (cat-logs-string-multi path #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_00:00:00-01:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_01:00:00-02:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_02:00:00-03:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_03:00:00-04:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_04:00:00-05:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_05:00:00-06:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_06:00:00-07:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_07:00:00-08:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_08:00:00-09:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_09:00:00-10:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_10:00:00-11:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_11:00:00-12:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_12:00:00-13:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_13:00:00-14:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_14:00:00-15:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_15:00:00-16:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_16:00:00-17:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_17:00:00-18:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_18:00:00-19:00:00-0500.log"))
+  (cat-logs-string path :zeek #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_00:00:00-01:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_01:00:00-02:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_02:00:00-03:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_03:00:00-04:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_04:00:00-05:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_05:00:00-06:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_06:00:00-07:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_07:00:00-08:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_08:00:00-09:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_09:00:00-10:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_10:00:00-11:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_11:00:00-12:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_12:00:00-13:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_13:00:00-14:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_14:00:00-15:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_15:00:00-16:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_16:00:00-17:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_17:00:00-18:00:00-0500.log" #P"/Users/yacin/code/cleek/data/homenet-uncompressed/conn_20241106_18:00:00-19:00:00-0500.log"))
 
 (defun cat/handler (cmd)
   (let ((args (clingon:command-arguments cmd))
-        (output-file (clingon:getopt cmd :output)))
-    (apply #'cat-logs-string output-file args)))
+        (output-file (clingon:getopt cmd :output))
+        (format (string->keyword (clingon:getopt cmd :format)))
+        (compression (string->keyword (clingon:getopt cmd :compression))))
+    (declare (ignore compression))
+    (apply #'cat-logs-string output-file format args)))
 
 (defun wip-compile-filter-expression ()
   (let ((func (compile-runtime-filters "(or (string= \"foo\" :bar) (string= \"baz\" :bar))")))

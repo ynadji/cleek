@@ -1,40 +1,20 @@
 (in-package :cleek)
 
-;; TODO: Make it so the array doesn't fully display.
-(defstruct zeek-record
-  line
-  types
-  fields
-  (status :unparsed :type keyword)      ; :unparsed :bytes :? :parsed
-  (bytes (make-array 32;(expt 2 16)
-                     :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8)))
-  map
-  (type :zeek :type keyword)            ; :zeek :json
-  )
-
-(defstruct zeek-log
-  filepath
-  path
-  stream
-  raw-header
-  (type :zeek :type keyword)
-  (compression :none :type keyword) ; :none :gzip :zstd
-  (record (make-zeek-record) :type zeek-record))
-
 (defstruct zeek
   filepath
   path
   stream
   raw-header
-  (compression :none :type keyword) ; :none :gzip :zstd
+  (compression :none :type keyword)     ; :none :gzip :zstd
   line
   types
   fields
   (status :unparsed :type keyword)      ; :unparsed :bytes :? :parsed
-  (bytes (make-array 32;(expt 2 16)
-                     :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8)))
+  modified?
+  (buffer (make-array 32                ; Grow this if actually used.
+                      :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8)))
   map
-  (format :zeek :type keyword)            ; :zeek :json
+  (format :zeek :type keyword)          ; :zeek :json
   )
 
 (defun infer-format (stream)
@@ -70,9 +50,10 @@
   (let ((zeek-log (make-zeek :filepath (or filepath "N/A")
                              :stream (or stream (open filepath)))))
     (setf (zeek-format zeek-log) (infer-format (zeek-stream zeek-log)))
-    (if (eq :zeek (zeek-format zeek-log))
-        (parse-zeek-header zeek-log)
-        (error "JSON not yet implemented."))))
+    (ecase (zeek-format zeek-log)
+      (:zeek (parse-zeek-header zeek-log))
+      (:json (next-record zeek-log)))
+    zeek-log))
 
 (defun next-record (zeek-log)
   ;; TODO: Add condition handling for when the header differs.
@@ -118,6 +99,11 @@
            (mapcar (lambda (s) (close s :abort ,abort?)) ,streams)
            (close (zeek-stream ,log) :abort ,abort?))))))
 
+(defun write-zeek-log-line (zeek-log stream format)
+  (cond ((and (not (zeek-modified? zeek-log)) (eq format (zeek-format zeek-log)))
+         (write-line (zeek-line zeek-log) stream))
+        (t (error "~a to ~a log conversion not implemented." (zeek-format zeek-log) format))))
+
 (defvar *input-format* :zeek) ; or :json
 (defvar *output-format* :zeek) ; or :json
 
@@ -137,7 +123,6 @@
     read-index))
 
 (defun sequence-line-reader (stream)
-  (declare (optimize (speed 3)))
   (let ((start 0)
         (eof? nil)
         (first-byte (setf (aref *buffer* 0)
@@ -287,7 +272,7 @@
     (:json (babel:string-to-octets
             (format nil "~a~%"
                     (jzon:stringify record
-                                    :replacer (lambda (k v) (not (equal "-" v)))))))
+                                    :replacer (lambda (k v) (declare (ignore k)) (not (equal "-" v)))))))
     (:zeek ;; this is incomplete until you handle JSON arrays (when going from json->zeek).
      (babel:string-to-octets
       (format nil (format nil "~~{~~a~~^~C~~}~~%" *zeek-field-separator*)

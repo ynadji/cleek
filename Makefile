@@ -1,5 +1,5 @@
 build:
-	sbcl --eval "(progn (push :deploy-console *features*) (asdf:make :cleek) (quit))"
+	sbcl --eval "(progn (asdf:make :cleek) (quit))"
 
 coverage:
 	sbcl --load coverage.lisp
