@@ -37,6 +37,11 @@
   (format :zeek :type keyword)            ; :zeek :json
   )
 
+(defun infer-format (stream)
+  (ecase (peek-char nil stream)
+    (#\{ :json)
+    (#\# :zeek)))
+
 (defun parse-zeek-header (zeek-log)
   (flet ((parse-header-values (line)
            (mapcar #'string->keyword (rest (str:split *zeek-field-separator* line)))))
@@ -58,12 +63,16 @@
       (ax:reversef (zeek-raw-header zeek-log))
       zeek-log)))
 
-;; TODO: this should prob just be the constructor for ZEEK-LOG
-;; TODO: rename OPEN-ZEEK-LOG?
-(defun read-log (filepath format)
-  (let* ((in (open filepath))
-         (zeek-log (make-zeek :filepath filepath :format format :stream in)))
-    (parse-zeek-header zeek-log)))
+;; TODO: Make this work with the condition system
+(defun open-zeek-log (&key filepath stream)
+  (when (or (and filepath stream) (and (null stream) (null filepath)))
+    (error "Specify exactly one of FILEPATH or STREAM"))
+  (let ((zeek-log (make-zeek :filepath (or filepath "N/A")
+                             :stream (or stream (open filepath)))))
+    (setf (zeek-format zeek-log) (infer-format (zeek-stream zeek-log)))
+    (if (eq :zeek (zeek-format zeek-log))
+        (parse-zeek-header zeek-log)
+        (error "JSON not yet implemented."))))
 
 (defun next-record (zeek-log)
   ;; TODO: Add condition handling for when the header differs.
@@ -81,16 +90,32 @@
                 zeek-log)
                (t zeek-log))))
 
-(defmacro with-zeek-log ((log filespec &key (format :zeek))
-                         &body body)
+(defmacro with-zeek-log ((log filepath) &body body)
   (ax:with-gensyms (abort?)
-    `(let ((,log (read-log ,filespec ,format))
+    `(let ((,log (open-zeek-log :filepath ,filepath))
            (,abort? t))
        (unwind-protect
             (multiple-value-prog1
                 (progn ,@body)
               (setq ,abort? nil))
          (when (and ,log (zeek-stream ,log))
+           (close (zeek-stream ,log) :abort ,abort?))))))
+
+;; concatenated streams are _way_ slower than just looping over each log and
+;; doing a WITH-ZEEK-LOG serially. no idea why. not a super common use case for
+;; now.
+(defmacro with-zeek-logs ((log filepaths) &body body)
+  (ax:with-gensyms (abort? cstream streams)
+    `(let* ((,streams (mapcar #'open ,filepaths))
+            (,cstream (apply #'make-concatenated-stream ,streams))
+            (,log (open-zeek-log :stream ,cstream))
+            (,abort? t))
+       (unwind-protect
+            (multiple-value-prog1
+                (progn ,@body)
+              (setq ,abort? nil))
+         (when (and ,log (zeek-stream ,log))
+           (mapcar (lambda (s) (close s :abort ,abort?)) ,streams)
            (close (zeek-stream ,log) :abort ,abort?))))))
 
 (defvar *input-format* :zeek) ; or :json
