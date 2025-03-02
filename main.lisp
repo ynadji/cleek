@@ -90,12 +90,18 @@
 
 (defun cat-logs-string (output-file &rest input-files)
   (with-open-file (out output-file :direction :output :if-exists :supersede)
-    (loop for in-path in input-files do
-      (with-zeek-log (zeek-log in-path)
-        (format out "~{~a~^~%~}~%" (zeek-raw-header zeek-log))
-        (loop while (zeek-line zeek-log)
-              do (write-line (zeek-line zeek-log) out)
-                 (next-record zeek-log))))
+    (if (zerop (length input-files))
+        (let ((zeek-log (open-zeek-log :stream *standard-input*)))
+          (format out "~{~a~^~%~}~%" (zeek-raw-header zeek-log))
+          (loop while (zeek-line zeek-log)
+                do (write-line (zeek-line zeek-log) out)
+                   (next-record zeek-log)))
+        (loop for in-path in input-files do
+          (with-zeek-log (zeek-log in-path)
+            (format out "~{~a~^~%~}~%" (zeek-raw-header zeek-log))
+            (loop while (zeek-line zeek-log)
+                  do (write-line (zeek-line zeek-log) out)
+                     (next-record zeek-log)))))
     (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
             (timestamp-to-zeek-open-close-string (local-time:now)))))
 
