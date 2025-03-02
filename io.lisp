@@ -21,49 +21,77 @@
   (compression :none :type keyword) ; :none :gzip :zstd
   (record (make-zeek-record) :type zeek-record))
 
+(defstruct zeek
+  filepath
+  path
+  stream
+  raw-header
+  (compression :none :type keyword) ; :none :gzip :zstd
+  line
+  types
+  fields
+  (status :unparsed :type keyword)      ; :unparsed :bytes :? :parsed
+  (bytes (make-array 32;(expt 2 16)
+                     :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8)))
+  map
+  (format :zeek :type keyword)            ; :zeek :json
+  )
+
 (defun parse-zeek-header (zeek-log)
   (flet ((parse-header-values (line)
            (mapcar #'string->keyword (rest (str:split *zeek-field-separator* line)))))
-   (let ((more-header? t))
-     (loop for line = (read-line (zeek-log-stream zeek-log) nil)
-           while (and more-header? line)
-           do (push line (zeek-log-raw-header zeek-log))
-           when (str:starts-with? "#path" line)
-             do (setf (zeek-log-path zeek-log)
-                      (first (parse-header-values line)))
-           when (str:starts-with? "#fields" line)
-             do (setf (zeek-record-fields (zeek-log-record zeek-log))
-                      (parse-header-values line))
-           when (str:starts-with? "#types" line)
-             do (setf (zeek-record-types (zeek-log-record zeek-log))
-                      (parse-header-values line)
-                      more-header? nil)
-           finally (setf (zeek-record-line (zeek-log-record zeek-log)) line)) ; duplicate in NEXT-RECORD :\
-     (ax:reversef (zeek-log-raw-header zeek-log))
-     zeek-log)))
+    (let ((more-header? t))
+      (loop for line = (read-line (zeek-stream zeek-log) nil)
+            while (and more-header? line)
+            do (push line (zeek-raw-header zeek-log))
+            when (str:starts-with? "#path" line)
+              do (setf (zeek-path zeek-log)
+                       (first (parse-header-values line)))
+            when (str:starts-with? "#fields" line)
+              do (setf (zeek-fields zeek-log)
+                       (parse-header-values line))
+            when (str:starts-with? "#types" line)
+              do (setf (zeek-types zeek-log)
+                       (parse-header-values line)
+                       more-header? nil)
+            finally (setf (zeek-line zeek-log) line)) ; duplicate in NEXT-RECORD :\
+      (ax:reversef (zeek-raw-header zeek-log))
+      zeek-log)))
 
 ;; TODO: this should prob just be the constructor for ZEEK-LOG
 ;; TODO: rename OPEN-ZEEK-LOG?
-(defun read-log (filepath type)
+(defun read-log (filepath format)
   (let* ((in (open filepath))
-         (zeek-log (make-zeek-log :filepath filepath :type type :stream in)))
+         (zeek-log (make-zeek :filepath filepath :format format :stream in)))
     (parse-zeek-header zeek-log)))
 
 (defun next-record (zeek-log)
   ;; TODO: Add condition handling for when the header differs.
-  (progn (setf (zeek-record-line (zeek-log-record zeek-log))
-               (read-line (zeek-log-stream zeek-log) nil))
-         (cond ((str:starts-with? "#close" (zeek-record-line (zeek-log-record zeek-log)))
+  (progn (setf (zeek-line zeek-log)
+               (read-line (zeek-stream zeek-log) nil))
+         (cond ((str:starts-with? "#close" (zeek-line zeek-log))
                 (next-record zeek-log))
                ;; new header
-               ((str:starts-with? "#" (zeek-record-line (zeek-log-record zeek-log)))
-                (let ((prev-fields (zeek-record-fields (zeek-log-record zeek-log))))
+               ((str:starts-with? "#" (zeek-line zeek-log))
+                (let ((prev-fields (zeek-fields zeek-log)))
                   (parse-zeek-header zeek-log)
-                  (let ((fields-diff (set-exclusive-or prev-fields (zeek-record-fields (zeek-log-record zeek-log)))))
+                  (let ((fields-diff (set-exclusive-or prev-fields (zeek-fields zeek-log))))
                     (when (and prev-fields fields-diff)
-                      (error "Fields differ in zeek logs!~%	Old: ~a~%	New: ~a~%	Diff: ~a~%" prev-fields (zeek-record-fields (zeek-log-record zeek-log)) fields-diff))))
+                      (error "Fields differ in zeek logs!~%	Old: ~a~%	New: ~a~%	Diff: ~a~%" prev-fields (zeek-fields zeek-log) fields-diff))))
                 zeek-log)
                (t zeek-log))))
+
+(defmacro with-zeek-log ((log filespec &key (format :zeek))
+                         &body body)
+  (ax:with-gensyms (abort?)
+    `(let ((,log (read-log ,filespec ,format))
+           (,abort? t))
+       (unwind-protect
+            (multiple-value-prog1
+                (progn ,@body)
+              (setq ,abort? nil))
+         (when (and ,log (zeek-stream ,log))
+           (close (zeek-stream ,log) :abort ,abort?))))))
 
 (defvar *input-format* :zeek) ; or :json
 (defvar *output-format* :zeek) ; or :json
