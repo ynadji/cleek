@@ -9,11 +9,11 @@
   line
   types
   fields
-  (status :unparsed :type keyword)      ; :unparsed :bytes :? :parsed
+  (status :unparsed :type keyword)      ; :unparsed :bytes :? :string-map :parsed-map
   modified?
   (buffer (make-array 32                ; Grow this if actually used.
                       :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8)))
-  map
+  (map (make-hash-table) :type hash-table)
   (format :zeek :type keyword)          ; :zeek :json
   )
 
@@ -39,7 +39,9 @@
               do (setf (zeek-types zeek-log)
                        (parse-header-values line)
                        more-header? nil)
-            finally (setf (zeek-line zeek-log) line)) ; duplicate in NEXT-RECORD :\
+            finally (setf (zeek-line zeek-log) line
+                          (zeek-status zeek-log) :unparsed
+                          (zeek-modified? zeek-log) nil)) ; TODO: remove duplicate in NEXT-RECORD :\
       (ax:reversef (zeek-raw-header zeek-log))
       zeek-log)))
 
@@ -57,8 +59,9 @@
 
 (defun next-record (zeek-log)
   ;; TODO: Add condition handling for when the header differs.
-  (progn (setf (zeek-line zeek-log)
-               (read-line (zeek-stream zeek-log) nil))
+  (progn (setf (zeek-line zeek-log) (read-line (zeek-stream zeek-log) nil)
+               (zeek-status zeek-log) :unparsed
+               (zeek-modified? zeek-log) nil)
          (cond ((str:starts-with? "#close" (zeek-line zeek-log))
                 (next-record zeek-log))
                ;; new header
@@ -99,10 +102,46 @@
            (mapcar (lambda (s) (close s :abort ,abort?)) ,streams)
            (close (zeek-stream ,log) :abort ,abort?))))))
 
+(defun ensure-map (zeek-log)     ; TODO: add parse for :parsed-map
+  (when (eq :unparsed (zeek-status zeek-log))
+   (ecase (zeek-format zeek-log)
+     (:zeek
+      (clrhash (zeek-map zeek-log))
+      (loop for field in (str:split *zeek-field-separator* (zeek-line zeek-log))
+            for name in (zeek-fields zeek-log)
+            do (setf (gethash name (zeek-map zeek-log)) field)))
+     (:json
+      (clrhash (zeek-map zeek-log))
+      (setf (zeek-map zeek-log) (jzon:parse (zeek-line zeek-log) :key-fn #'string->keyword))))
+   (setf (zeek-status zeek-log) :string-map)))
+
+(defun ensure-fields (zeek-log)
+  (unless (zeek-fields zeek-log)
+    (when (zerop (hash-table-count (zeek-map zeek-log)))
+      (error "FIELDS and MAP are both empty so FIELDS cannot be populated."))
+    (setf (zeek-fields zeek-log) (ax:hash-table-keys (zeek-map zeek-log)))))
+
+(defun write-zeek-header (zeek-log stream format)
+  (when (eq format :zeek)
+    (ax:if-let ((header (zeek-raw-header zeek-log)))
+      (format stream "~{~a~^~%~}~%" header)
+      (progn (ensure-map zeek-log)
+             (ensure-fields zeek-log)
+             (format stream "~a" (generate-zeek-header (zeek-fields zeek-log) nil))))))
+
+;; TODO: handle set/vector types appropriately.
 (defun write-zeek-log-line (zeek-log stream format)
   (cond ((and (not (zeek-modified? zeek-log)) (eq format (zeek-format zeek-log)))
          (write-line (zeek-line zeek-log) stream))
-        (t (error "~a to ~a log conversion not implemented." (zeek-format zeek-log) format))))
+        ((not (zeek-modified? zeek-log))
+         (ensure-map zeek-log)
+         (ensure-fields zeek-log)
+         (ecase format
+           (:json (jzon:stringify (zeek-map zeek-log) :stream stream) (terpri stream))
+           (:zeek (format stream (format nil "~~{~~a~~^~C~~}~~%" *zeek-field-separator*)
+                          (loop for field-name in (zeek-fields zeek-log)
+                                collect (or (gethash field-name (zeek-map zeek-log) "-") "-"))))))
+        (t (error "Modified log writing not supported."))))
 
 (defvar *input-format* :zeek) ; or :json
 (defvar *output-format* :zeek) ; or :json
