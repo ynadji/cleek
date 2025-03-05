@@ -25,17 +25,6 @@
             (when write-footer
               (funcall write-footer))))))))
 
-;; how can i know if i need to parse the value from the hash-table or not? i
-;; think i'm going to need to have this map of field-names to types at runtime.
-
-(defun compile-runtime-filters (s)
-  (let ((filters (subst-if '(gethash :original-key record)
-                           #'keywordp
-                           (with-input-from-string (in s)
-                             (read in nil)))))
-    (values (compile nil `(lambda (record) ,filters))
-            filters)))
-
 ;; TODO: how easy is it to build up transducers? you probably need a macro that
 ;; takes a bunch of existing functions (or forms) that get T:COMPd together in
 ;; the correct order (and wrapped by a lambda for forms) and used here. you
@@ -78,7 +67,13 @@
                              :long-name "output-compression"
                              :items '("none" "gzip" "zstd")
                              :initial-value "none"
-                             :key :compression)))
+                             :key :compression)
+        (clingon:make-option :string
+                             :description "Filter expression"
+                             :short-name #\x
+                             :long-name "filter"
+                             :initial-value "t"
+                             :key :filter-expr)))
 
 (defun cat-logs (output-file output-format &rest input-files)
   (when input-files
@@ -102,7 +97,7 @@
        (when write-footer
          (funcall write-footer))))))
 
-(defun cat-logs-string (output-file output-format &rest input-files)
+(defun cat-logs-string (output-file output-format filter-func &rest input-files)
   (with-open-file (out output-file :direction :output :if-exists :supersede)
     (when (zerop (length input-files))
       (push "/dev/stdin" input-files))
@@ -110,7 +105,8 @@
       (with-zeek-log (zeek-log in-path)
         (write-zeek-header zeek-log out output-format)
         (loop while (zeek-line zeek-log)
-              do (write-zeek-log-line zeek-log out output-format)
+              do (when (funcall filter-func zeek-log)
+                   (write-zeek-log-line zeek-log out output-format))
                  (next-record zeek-log))))
     (when (eq output-format :zeek)
      (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
@@ -126,21 +122,36 @@
     (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
             (timestamp-to-zeek-open-close-string (local-time:now)))))
 
-(defun perf-test (&optional (output-format :zeek) (path #P"~/tmp/test2.log"))
-  (cat-logs-string path output-format #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_00:00:00-01:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_01:00:00-02:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_02:00:00-03:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_03:00:00-04:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_04:00:00-05:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_05:00:00-06:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_06:00:00-07:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_07:00:00-08:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_08:00:00-09:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_09:00:00-10:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_10:00:00-11:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_11:00:00-12:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_12:00:00-13:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_13:00:00-14:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_14:00:00-15:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_15:00:00-16:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_16:00:00-17:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_17:00:00-18:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_18:00:00-19:00:00-0500.log"))
+(defun perf-test (&optional (output-format :zeek) (filter-func (lambda (x) (declare (ignorable x)) t)) (path #P"~/tmp/test2.log"))
+  (cat-logs-string path output-format filter-func #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_00:00:00-01:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_01:00:00-02:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_02:00:00-03:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_03:00:00-04:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_04:00:00-05:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_05:00:00-06:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_06:00:00-07:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_07:00:00-08:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_08:00:00-09:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_09:00:00-10:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_10:00:00-11:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_11:00:00-12:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_12:00:00-13:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_13:00:00-14:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_14:00:00-15:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_15:00:00-16:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_16:00:00-17:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_17:00:00-18:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_18:00:00-19:00:00-0500.log"))
 
 (defun cat/handler (cmd)
   (let ((args (clingon:command-arguments cmd))
         (output-file (clingon:getopt cmd :output))
         (format (string->keyword (clingon:getopt cmd :format)))
-        (compression (string->keyword (clingon:getopt cmd :compression))))
+        (compression (string->keyword (clingon:getopt cmd :compression)))
+        (filter-expr (clingon:getopt cmd :filter-expr)))
     (declare (ignore compression))
-    (apply #'cat-logs-string output-file format args)))
+    (let ((filter-func (compile-runtime-filters filter-expr)))
+      (apply #'cat-logs-string output-file format filter-func args))))
 
-(defun wip-compile-filter-expression ()
-  (let ((func (compile-runtime-filters "(or (string= \"foo\" :bar) (string= \"baz\" :bar))")))
-    (print (funcall func (serapeum:dict :original-key "baz")))
-    (print (funcall func (serapeum:dict :original-key "bong")))))
+;; TODO: we can track which slots from ZEEK are being accessed to
+;; determine which we must ensure are present to run the filters.
+(defun update-keywords (form)
+  ;; (eq form 'line) didn't work and i don't know why...
+  (cond ((and (symbolp form)
+              (string= "LINE" (symbol-name form))) '(zeek-line log))
+        ((keywordp form) `(gethash ,form (zeek-map log)))
+        ((atom form) form)
+        (t (cons (update-keywords (car form))
+                 (update-keywords (cdr form))))))
+
+(defun compile-runtime-filters (s)
+  (let ((filters (update-keywords
+                  (with-input-from-string (in s)
+                    (read in nil)))))
+    (values (compile nil `(lambda (log) (declare (ignorable log)) ,filters))
+            filters)))
 
 ;; TODO: also read from *stdin*? less important since i can directly read
 ;; compressed files.
