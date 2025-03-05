@@ -137,6 +137,10 @@
 
 ;; TODO: we can track which slots from ZEEK are being accessed to
 ;; determine which we must ensure are present to run the filters.
+;; TODO: main alist of nicknames for fields, e.g., :o_h for
+;; :id.orig_h, etc.
+;; TODO: terse regex func? e.g., (~ :o_h "^[0-4]\.") or something?
+;; TODO: save common filters to a file, show in --help output or something?
 (defun update-keywords (form)
   ;; (eq form 'line) didn't work and i don't know why...
   (cond ((and (symbolp form)
