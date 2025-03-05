@@ -54,7 +54,7 @@
     (setf (zeek-format zeek-log) (infer-format (zeek-stream zeek-log)))
     (ecase (zeek-format zeek-log)
       (:zeek (parse-zeek-header zeek-log))
-      (:json (next-record zeek-log)))
+      (:json (next-record zeek-log) (infer-log-path-fields-types zeek-log)))
     zeek-log))
 
 (defun next-record (zeek-log)
@@ -127,7 +127,7 @@
       (format stream "~{~a~^~%~}~%" header)
       (progn (ensure-map zeek-log)
              (ensure-fields zeek-log)
-             (format stream "~a" (generate-zeek-header (zeek-fields zeek-log) nil))))))
+             (format stream "~a" (generate-zeek-header (zeek-fields zeek-log) (zeek-types zeek-log)))))))
 
 ;; TODO: handle set/vector types appropriately.
 (defun write-zeek-log-line (zeek-log stream format)
