@@ -80,9 +80,6 @@
                                field))))
           (t (funcall (ax:assoc-value *zeek-stringify* type) field)))))
 
-;; TODO: in order to properly support JSON->Zeek transforms, you'll need to have a map of all
-;; possible field names to the zeek types, which kinda sucks. does that matter? unclear.
-
 (defparameter *path->fields*
   '(
     (:analyzer . (:ts :cause :analyzer_kind :analyzer_name :uid :fuid :id.orig_h :id.orig_p :id.resp_h :id.resp_p :failure_reason :failure_data))

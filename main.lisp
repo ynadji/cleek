@@ -135,8 +135,6 @@
     (let ((filter-func (compile-runtime-filters filter-expr)))
       (apply #'cat-logs-string output-file format filter-func args))))
 
-;; TODO: we can track which slots from ZEEK are being accessed to
-;; determine which we must ensure are present to run the filters.
 ;; TODO: main alist of nicknames for fields, e.g., :o_h for
 ;; :id.orig_h, etc.
 ;; TODO: terse regex func? e.g., (~ :o_h "^[0-4]\.") or something?
@@ -151,10 +149,12 @@
                  (update-keywords (cdr form))))))
 
 (defun compile-runtime-filters (s)
-  (let ((filters (update-keywords
+  (let* ((filters (update-keywords
                   (with-input-from-string (in s)
-                    (read in nil)))))
+                    (read in nil))))
+         (columns (remove-if-not #'keywordp (ax:flatten filters))))
     (values (compile nil `(lambda (log) (declare (ignorable log)) ,filters))
+            columns
             filters)))
 
 ;; TODO: also read from *stdin*? less important since i can directly read
