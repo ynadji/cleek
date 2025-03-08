@@ -9,6 +9,9 @@
   line
   types
   fields
+  row-strings
+  row
+  (field->idx (make-hash-table) :type hash-table)
   (status :unparsed :type keyword)      ; :unparsed :bytes :? :string-map :parsed-map
   modified?
   (buffer (make-array 32                ; Grow this if actually used.
@@ -102,6 +105,37 @@
            (mapcar (lambda (s) (close s :abort ,abort?)) ,streams)
            (close (zeek-stream ,log) :abort ,abort?))))))
 
+;; if FIELDS is non-NIL, only parse those fields.
+(defun ensure-row-strings (zeek-log &optional fields)
+  (when (eq :unparsed (zeek-status zeek-log))
+    (if fields
+        (error "Parsing of individual fields not implemented.")
+        (setf (zeek-row-strings zeek-log) (coerce (str:split #\Tab (zeek-line zeek-log)) 'vector)
+              (zeek-status zeek-log) :row-strings))))
+
+;; if FIELDS is non-NIL, only parse those fields.
+(defun ensure-row (zeek-log &optional fields)
+  (unless (eq :row (zeek-status zeek-log))
+    (ensure-row-strings zeek-log fields)
+    (if fields
+        (error "Parsing of individual fields not implemented.")
+        (setf (zeek-row zeek-log)
+              (coerce (loop for type in (zeek-types zeek-log)
+                            for field across (zeek-row-strings zeek-log)
+                            collect (parse-zeek-type field type)) 'vector)
+              (zeek-status zeek-log) :row))))
+
+(defun ensure-fields->idx (zeek-log)
+  (when (zerop (hash-table-count (zeek-field->idx zeek-log)))
+    (ensure-fields zeek-log)
+    (loop for idx from 0 for field in (zeek-fields zeek-log)
+          do (setf (gethash field (zeek-field->idx zeek-log)) idx))))
+
+(defun field->idx (zeek-log field)
+  (gethash field (zeek-field->idx zeek-log)))
+
+;; TODO: i probably don't need this anymore. just something that
+;; writes out a json log.
 (defun ensure-map (zeek-log)     ; TODO: add parse for :parsed-map
   (when (eq :unparsed (zeek-status zeek-log))
    (ecase (zeek-format zeek-log)

@@ -138,6 +138,11 @@
 ;; TODO: main alist of nicknames for fields, e.g., :o_h for
 ;; :id.orig_h, etc.
 ;; TODO: terse regex func? e.g., (~ :o_h "^[0-4]\.") or something?
+;; if you _just_ do this for string stuff, you'll know anything that uses it
+;; needs to have strings. otherwise fully parse. but uhh what about mixed?
+;; or (or (~ :o_p "443") (> :o_p 443))? do i need two arrays with strings
+;; and fully parsed versions? i guess you could just define a list of funcs
+;; and stick with those? what if you want to use something else?
 ;; TODO: save common filters to a file, show in --help output or something?
 (defun update-keywords (form)
   ;; (eq form 'line) didn't work and i don't know why...
