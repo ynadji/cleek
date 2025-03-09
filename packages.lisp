@@ -6,4 +6,5 @@
                     (:tld :cl-tld)
                     (:jzon :com.inuoe.jzon)
                     (:t :transducers))
+  (:import-from :split-sequence #:split-sequence)
   (:export :main))
