@@ -20,6 +20,8 @@
   (format :zeek :type keyword)          ; :zeek :json
   )
 
+(na:enable-ip-syntax)
+
 (defun infer-format (stream)
   (ecase (peek-char nil stream)
     (#\{ :json)
@@ -108,6 +110,10 @@
 ;; TODO: if FIELDS is non-NIL, only parse those fields.
 ;; just make ROW-STRINGS only as long as the number of fields you have
 ;; then ENSURE-ROW will just work.
+;;
+;; thinking about this more, you'd basically have to handroll something to look
+;; for the delimiters and it would only be noticeably faster if there aren't a
+;; lot of fields and they're early on in the line.
 (defun ensure-row-strings (zeek-log &optional fields)
   (when (eq :unparsed (zeek-status zeek-log))
     (if fields
