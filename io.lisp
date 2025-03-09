@@ -112,7 +112,7 @@
   (when (eq :unparsed (zeek-status zeek-log))
     (if fields
         (error "Parsing of individual fields not implemented.")
-        (setf (zeek-row-strings zeek-log) (coerce (str:split #\Tab (zeek-line zeek-log)) 'vector)
+        (setf (zeek-row-strings zeek-log) (coerce (split-sequence #\Tab (zeek-line zeek-log)) 'vector)
               (zeek-status zeek-log) :row-strings))))
 
 ;; TODO: if FIELDS is non-NIL, only parse those fields.
