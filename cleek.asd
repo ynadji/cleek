@@ -7,6 +7,7 @@
   :components ((:file "packages")
                (:file "types")
                (:file "io")
+               (:file "filters")
                (:file "main"))
   :defsystem-depends-on (:deploy)
   :build-operation "deploy-console-op"

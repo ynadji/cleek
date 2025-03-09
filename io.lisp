@@ -105,7 +105,9 @@
            (mapcar (lambda (s) (close s :abort ,abort?)) ,streams)
            (close (zeek-stream ,log) :abort ,abort?))))))
 
-;; if FIELDS is non-NIL, only parse those fields.
+;; TODO: if FIELDS is non-NIL, only parse those fields.
+;; just make ROW-STRINGS only as long as the number of fields you have
+;; then ENSURE-ROW will just work.
 (defun ensure-row-strings (zeek-log &optional fields)
   (when (eq :unparsed (zeek-status zeek-log))
     (if fields
@@ -113,7 +115,9 @@
         (setf (zeek-row-strings zeek-log) (coerce (str:split #\Tab (zeek-line zeek-log)) 'vector)
               (zeek-status zeek-log) :row-strings))))
 
-;; if FIELDS is non-NIL, only parse those fields.
+;; TODO: if FIELDS is non-NIL, only parse those fields.
+;; TODO: you should do a quick check to see if only parsing the needed fields
+;; is any faster than just parsing all of them and by how much.
 (defun ensure-row (zeek-log &optional fields)
   (unless (eq :row (zeek-status zeek-log))
     (ensure-row-strings zeek-log fields)

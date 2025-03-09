@@ -97,15 +97,20 @@
        (when write-footer
          (funcall write-footer))))))
 
-(defun cat-logs-string (output-file output-format filter-func &rest input-files)
+(defun cat-logs-string (output-file output-format filter-func columns &rest input-files)
   (with-open-file (out output-file :direction :output :if-exists :supersede)
     (when (zerop (length input-files))
       (push "/dev/stdin" input-files))
     (loop for in-path in input-files do
       (with-zeek-log (zeek-log in-path)
         (write-zeek-header zeek-log out output-format)
+        (when columns
+          (ensure-fields->idx zeek-log)
+          (ensure-row-strings zeek-log))
         (loop while (zeek-line zeek-log)
-              do (when (funcall filter-func zeek-log)
+              do (when columns
+                   (ensure-row-strings zeek-log))
+                 (when (funcall filter-func zeek-log)
                    (write-zeek-log-line zeek-log out output-format))
                  (next-record zeek-log))))
     (when (eq output-format :zeek)
@@ -122,8 +127,9 @@
     (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
             (timestamp-to-zeek-open-close-string (local-time:now)))))
 
-(defun perf-test (&optional (output-format :zeek) (filter-func (lambda (x) (declare (ignorable x)) t)) (path #P"~/tmp/test2.log"))
-  (cat-logs-string path output-format filter-func #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_00:00:00-01:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_01:00:00-02:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_02:00:00-03:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_03:00:00-04:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_04:00:00-05:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_05:00:00-06:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_06:00:00-07:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_07:00:00-08:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_08:00:00-09:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_09:00:00-10:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_10:00:00-11:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_11:00:00-12:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_12:00:00-13:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_13:00:00-14:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_14:00:00-15:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_15:00:00-16:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_16:00:00-17:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_17:00:00-18:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_18:00:00-19:00:00-0500.log"))
+(defun perf-test (&optional (output-format :zeek) (filter-expr "t") (path #P"~/tmp/test2.log"))
+  (multiple-value-bind (filter-func columns) (compile-runtime-filters filter-expr)
+    (cat-logs-string path output-format filter-func columns #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_00:00:00-01:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_01:00:00-02:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_02:00:00-03:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_03:00:00-04:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_04:00:00-05:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_05:00:00-06:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_06:00:00-07:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_07:00:00-08:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_08:00:00-09:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_09:00:00-10:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_10:00:00-11:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_11:00:00-12:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_12:00:00-13:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_13:00:00-14:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_14:00:00-15:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_15:00:00-16:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_16:00:00-17:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_17:00:00-18:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_18:00:00-19:00:00-0500.log")))
 
 (defun cat/handler (cmd)
   (let ((args (clingon:command-arguments cmd))
@@ -132,8 +138,8 @@
         (compression (string->keyword (clingon:getopt cmd :compression)))
         (filter-expr (clingon:getopt cmd :filter-expr)))
     (declare (ignore compression))
-    (let ((filter-func (compile-runtime-filters filter-expr)))
-      (apply #'cat-logs-string output-file format filter-func args))))
+    (multiple-value-bind (filter-func columns) (compile-runtime-filters filter-expr)
+      (apply #'cat-logs-string output-file format filter-func columns args))))
 
 ;; TODO: main alist of nicknames for fields, e.g., :o_h for
 ;; :id.orig_h, etc.
@@ -148,7 +154,8 @@
   ;; (eq form 'line) didn't work and i don't know why...
   (cond ((and (symbolp form)
               (string= "LINE" (symbol-name form))) '(zeek-line log))
-        ((keywordp form) `(gethash ,form (zeek-map log)))
+        ((keywordp form) `(aref (zeek-row-strings log)
+                                (field->idx log ,form)))
         ((atom form) form)
         (t (cons (update-keywords (car form))
                  (update-keywords (cdr form))))))
