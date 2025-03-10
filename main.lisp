@@ -147,8 +147,13 @@
     (multiple-value-bind (filter-func columns) (compile-runtime-filters filter-expr)
       (apply #'cat-logs-string output-file format filter-func columns args))))
 
-;; TODO: main alist of nicknames for fields, e.g., :o_h for
-;; :id.orig_h, etc.
+(defparameter *nicknames*
+  '((:o_h . :id.orig_h)
+    (:r_h . :id.resp_h)
+    (:o_p . :id.orig_p)
+    (:r_p . :id.resp_p)
+    (:q . :query)))
+
 ;; TODO: terse regex func? e.g., (~ :o_h "^[0-4]\.") or something?
 ;; if you _just_ do this for string stuff, you'll know anything that uses it
 ;; needs to have strings. otherwise fully parse. but uhh what about mixed?
@@ -160,7 +165,7 @@
   ;; (eq form 'line) didn't work and i don't know why...
   (cond ((and (symbolp form)
               (string= "LINE" (symbol-name form))) '(zeek-line log))
-        ((keywordp form) `(get-value log ,form))
+        ((keywordp form) `(get-value log ,(or (ax:assoc-value *nicknames* form) form)))
         ((atom form) form)
         (t (cons (update-keywords (car form))
                  (update-keywords (cdr form))))))
