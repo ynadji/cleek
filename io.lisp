@@ -50,6 +50,13 @@
       (ax:reversef (zeek-raw-header zeek-log))
       zeek-log)))
 
+(defun get-value (zeek-log field)
+  (ecase (zeek-format zeek-log)
+    ;; TODO: these are always strings. what about when we want not strings?
+    (:zeek (aref (zeek-row-strings zeek-log) (field->idx zeek-log field)))
+    ;; TODO: these are always "parsed" from jzon
+    (:json (gethash field (zeek-map zeek-log)))))
+
 ;; TODO: Make this work with the condition system
 (defun open-zeek-log (&key filepath stream)
   (when (or (and filepath stream) (and (null stream) (null filepath)))

@@ -105,11 +105,14 @@
       (with-zeek-log (zeek-log in-path)
         (write-zeek-header zeek-log out output-format)
         (when columns
-          (ensure-fields->idx zeek-log)
-          (ensure-row-strings zeek-log))
+          (ecase (zeek-format zeek-log)
+            (:zeek (ensure-fields->idx zeek-log) (ensure-row-strings zeek-log))
+            (:json (ensure-map zeek-log))))
         (loop while (zeek-line zeek-log)
               do (when columns
-                   (ensure-row-strings zeek-log))
+                   (ecase (zeek-format zeek-log)
+                     (:zeek (ensure-row-strings zeek-log))
+                     (:json (ensure-map zeek-log))))
                  (when (funcall filter-func zeek-log)
                    (write-zeek-log-line zeek-log out output-format))
                  (next-record zeek-log))))
@@ -157,8 +160,7 @@
   ;; (eq form 'line) didn't work and i don't know why...
   (cond ((and (symbolp form)
               (string= "LINE" (symbol-name form))) '(zeek-line log))
-        ((keywordp form) `(aref (zeek-row-strings log)
-                                (field->idx log ,form)))
+        ((keywordp form) `(get-value log ,form))
         ((atom form) form)
         (t (cons (update-keywords (car form))
                  (update-keywords (cdr form))))))
