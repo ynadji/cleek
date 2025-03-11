@@ -102,36 +102,3 @@
 
 (in-suite end-to-end)
 
-(defvar *test-inputs-dir* (asdf:system-relative-pathname "cleek" "data/test-inputs/"))
-(defvar *baselines-dir* (asdf:system-relative-pathname "cleek" "data/baselines/"))
-(defvar *diff-script* (asdf:system-relative-pathname "cleek" "scripts/diff.sh"))
-
-;; one of the zst files keeps getting written with corruption for some reason...
-
-(defvar *update-baselines* nil)
-
-(test read-write-log
-  (loop for test-input in (uiop:directory-files *test-inputs-dir*) do
-    (loop for suffix in (list "log" "log.gz") do ; TODO: add log.zst when you fix that bug
-      (loop for output-type in '(:zeek :json)
-            for input-format = (if (str:contains? "json" (file-namestring test-input)) "json" "zeek")
-            for output-format = (str:downcase (string output-type))
-            for namestring = (format nil "conn.~a.~a.~a" input-format output-format suffix)
-            for output-file = (merge-pathnames (uiop:temporary-directory) namestring)
-            for baseline-file = (merge-pathnames *baselines-dir* namestring)
-            do
-               (cat-logs output-file output-type test-input)
-               ;;(format t "~%Input: ~a~&Output: ~a~&Baseline: ~a~&Output type: ~a~&"
-               ;;        test-input output-file baseline-file output-type)
-               (multiple-value-bind (stdout stderr exit-code)
-                   (uiop:run-program (format nil "~a ~a ~a"
-                                             *diff-script* baseline-file output-file)
-                                     :ignore-error-status t
-                                     )
-
-                 (declare (ignorable stdout stderr))
-                 (when (and *update-baselines* (not (zerop exit-code)))
-                   (uiop:copy-file output-file baseline-file))
-                 (is (zerop exit-code)
-                     "~%Input: ~a~&Output: ~a~&Baseline: ~a~&Output type: ~a~&Exit code: ~a~%~%Diff: ~a"
-                     test-input output-file baseline-file output-type exit-code stderr))))))

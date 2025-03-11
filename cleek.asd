@@ -20,12 +20,6 @@
   :license "MIT"
   :depends-on ("cleek" "fiveam" "str")
   :components ((:file "tests"))
-  :perform (test-op (o c) (progn (symbol-call :fiveam '#:run!
-                                              (uiop:find-symbol* '#:tests
-                                                                 '#:cleek/tests))
-                                 (symbol-call :fiveam '#:run!
-                                              (uiop:find-symbol* '#:types
-                                                                 '#:cleek/tests))
-                                 (symbol-call :fiveam '#:run!
-                                              (uiop:find-symbol* '#:end-to-end
-                                                                 '#:cleek/tests)))))
+  :perform (test-op (o c) (loop for suite in '(#:tests #:types #:end-to-end)
+                                do (symbol-call :fiveam '#:run!
+                                                (uiop:find-symbol* suite '#:cleek/tests)))))
