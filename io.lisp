@@ -20,8 +20,6 @@
   (format :zeek :type keyword)          ; :zeek :json
   )
 
-(na:enable-ip-syntax)
-
 (defun infer-format (stream)
   (ecase (peek-char nil stream)
     (#\{ :json)

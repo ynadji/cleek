@@ -2,6 +2,9 @@
 
 (setf *read-default-float-format* 'double-float)
 
+(na:enable-ip-syntax)
+(cl-interpol:enable-interpol-syntax)
+
 (defvar *zeek-set-separator* #\,)
 (defvar *zeek-unset-field* #\-)
 (defvar *zeek-empty-field* "(empty)")

@@ -138,6 +138,7 @@
 (defun cat/handler (cmd)
   (in-package :cleek)
   (na:enable-ip-syntax)
+  (cl-interpol:enable-interpol-syntax)
   (let ((args (clingon:command-arguments cmd))
         (output-file (clingon:getopt cmd :output))
         (format (string->keyword (clingon:getopt cmd :format)))
