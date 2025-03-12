@@ -97,28 +97,29 @@
        (when write-footer
          (funcall write-footer))))))
 
-(defun cat-logs-string (output-file output-format filter-func columns &rest input-files)
-  (with-open-file (out output-file :direction :output :if-exists :supersede)
-    (when (zerop (length input-files))
-      (push "/dev/stdin" input-files))
-    (loop for in-path in input-files do
-      (with-zeek-log (zeek-log in-path)
-        (write-zeek-header zeek-log out output-format)
-        (when columns
-          (ecase (zeek-format zeek-log)
-            (:zeek (ensure-fields->idx zeek-log) (ensure-row-strings zeek-log))
-            (:json (ensure-map zeek-log))))
-        (loop while (zeek-line zeek-log)
-              do (when columns
-                   (ecase (zeek-format zeek-log)
-                     (:zeek (ensure-row-strings zeek-log))
-                     (:json (ensure-map zeek-log))))
-                 (when (funcall filter-func zeek-log)
-                   (write-zeek-log-line zeek-log out output-format))
-                 (next-record zeek-log))))
-    (when (eq output-format :zeek)
-     (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
-             (timestamp-to-zeek-open-close-string (local-time:now))))))
+(defun cat-logs-string (output-file output-format filter-expr &rest input-files)
+  (multiple-value-bind (filter-func columns) (compile-runtime-filters filter-expr)
+   (with-open-file (out output-file :direction :output :if-exists :supersede)
+     (when (zerop (length input-files))
+       (push "/dev/stdin" input-files))
+     (loop for in-path in input-files do
+       (with-zeek-log (zeek-log in-path)
+         (write-zeek-header zeek-log out output-format)
+         (when columns
+           (ecase (zeek-format zeek-log)
+             (:zeek (ensure-fields->idx zeek-log) (ensure-row-strings zeek-log))
+             (:json (ensure-map zeek-log))))
+         (loop while (zeek-line zeek-log)
+               do (when columns
+                    (ecase (zeek-format zeek-log)
+                      (:zeek (ensure-row-strings zeek-log))
+                      (:json (ensure-map zeek-log))))
+                  (when (funcall filter-func zeek-log)
+                    (write-zeek-log-line zeek-log out output-format))
+                  (next-record zeek-log))))
+     (when (eq output-format :zeek)
+       (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
+               (timestamp-to-zeek-open-close-string (local-time:now)))))))
 
 (defun cat-logs-string-multi (output-file &rest input-files)
   (with-open-file (out output-file :direction :output :if-exists :supersede)
@@ -145,8 +146,7 @@
         (compression (string->keyword (clingon:getopt cmd :compression)))
         (filter-expr (clingon:getopt cmd :filter-expr)))
     (declare (ignore compression))
-    (multiple-value-bind (filter-func columns) (compile-runtime-filters filter-expr)
-      (apply #'cat-logs-string output-file format filter-func columns args))))
+    (apply #'cat-logs-string output-file format filter-expr args)))
 
 (defparameter *nicknames*
   '((:o_h . :id.orig_h)

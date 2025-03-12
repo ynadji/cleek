@@ -11,12 +11,16 @@
   (:import-from #:cleek
                 #:parse-zeek-type
                 #:unparse-zeek-type
-                #:cat-logs)
+                #:cat-logs-string
+                #:string->keyword)
+  (:import-from #:cl-interpol
+                #:enable-interpol-syntax)
   (:export #:tests))
 
 (in-package :cleek/tests)
 
 (enable-ip-syntax)
+(enable-interpol-syntax)
 
 (def-suite tests)
 (def-suite types)
@@ -102,3 +106,26 @@
 
 (in-suite end-to-end)
 
+(defvar *test-inputs-dir* (asdf:system-relative-pathname "cleek" "data/test-input/"))
+(defvar *baselines-dir* (asdf:system-relative-pathname "cleek" "data/baselines/"))
+(defvar *diff-script* (asdf:system-relative-pathname "cleek" "scripts/diff.sh"))
+
+(test cat
+  ;; TODO: make sure you're testing against the output format's input file.
+  ;; UIDs are different too. as are the paths, timestamps, open/close times.
+  (loop for input-format in '("zeek" "json")
+        for tmp-dir = (uiop:temporary-directory) do
+          (loop for output-format in '("zeek" "json") do
+            (loop for input-path in (uiop:directory-files (merge-pathnames #?"${input-format}/" *test-inputs-dir*))
+                  for basename = (pathname-name input-path)
+                  for output-path = (merge-pathnames basename tmp-dir)
+                  do (format t "(cat-logs-string ~a ~a ~a ~a)~%" output-path (string->keyword output-format) "t" input-path)
+                     (cat-logs-string output-path (string->keyword output-format) "t" input-path)
+                     (multiple-value-bind (stdout stderr exit-code)
+                         (uiop:run-program (format nil "~a ~a ~a"
+                                                   *diff-script* input-path output-path)
+                                           :ignore-error-status t)
+                       (declare (ignorable stdout stderr))
+                       (is (zerop exit-code)
+                           "~%Input: ~a~&Input Format: ~a~&Output Format: ~a~&Exit code: ~a~%~%Diff: ~a"
+                           input-path input-format output-format exit-code stderr))))))
