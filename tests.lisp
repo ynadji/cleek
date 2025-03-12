@@ -115,11 +115,11 @@
   ;; UIDs are different too. as are the paths, timestamps, open/close times.
   (loop for input-format in '("zeek" "json")
         for tmp-dir = (uiop:temporary-directory) do
-          (loop for output-format in '("zeek" "json") do
+          (loop for output-format in (list input-format) do ;in '("zeek" "json") do
             (loop for input-path in (uiop:directory-files (merge-pathnames #?"${input-format}/" *test-inputs-dir*))
                   for basename = (pathname-name input-path)
                   for output-path = (merge-pathnames basename tmp-dir)
-                  do (format t "(cat-logs-string ~a ~a ~a ~a)~%" output-path (string->keyword output-format) "t" input-path)
+                  do ;;(format t "(cat-logs-string ~a ~a ~a ~a)~%" output-path (string->keyword output-format) "t" input-path)
                      (cat-logs-string output-path (string->keyword output-format) "t" input-path)
                      (multiple-value-bind (stdout stderr exit-code)
                          (uiop:run-program (format nil "~a ~a ~a"
@@ -128,4 +128,4 @@
                        (declare (ignorable stdout stderr))
                        (is (zerop exit-code)
                            "~%Input: ~a~&Input Format: ~a~&Output Format: ~a~&Exit code: ~a~%~%Diff: ~a"
-                           input-path input-format output-format exit-code stderr))))))
+                           input-path input-format output-format exit-code stdout))))))
