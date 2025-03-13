@@ -1,0 +1,34 @@
+#separator \x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	dns
+#open	2024-11-05-16-39-07
+#fields	ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	proto	trans_id	rtt	query	qclass	qclass_name	qtype	qtype_name	rcode	rcode_name	AA	TC	RD	RA	Z	answers	TTLs	rejected
+#types	time	string	addr	port	addr	port	enum	count	interval	string	count	string	count	string	count	string	bool	bool	bool	bool	count	vector[string]	vector[interval]	bool
+1623187693.607810	CWxwBS2VksGa0Hrusc	71.127.52.28	37086	8.8.4.4	53	udp	57211	-	connectivity-check.ubuntu.com	1	C_INTERNET	28	AAAA	0	NOERROR	F	F	T	F	0	-	-	F
+1623187693.607462	C4eaHa3Q91IQyL6yH7	192.168.1.145	37086	8.8.4.4	53	udp	57211	-	connectivity-check.ubuntu.com	1	C_INTERNET	28	AAAA	0	NOERROR	F	F	T	F	0	-	-	F
+1623187693.612375	CoHTGf4LeHD6TzIxC6	71.127.52.28	42781	8.8.4.4	53	udp	59274	-	connectivity-check.ubuntu.com	1	C_INTERNET	28	AAAA	0	NOERROR	F	F	T	F	0	-	-	F
+1623187693.612199	CA7bgKcUeBAB6e7Ki	192.168.1.145	42781	8.8.4.4	53	udp	59274	-	connectivity-check.ubuntu.com	1	C_INTERNET	28	AAAA	0	NOERROR	F	F	T	F	0	-	-	F
+1623187697.134550	CNJmBCtKObmUtomIf	71.127.52.28	54325	8.8.8.8	53	udp	63813	0.005265	unchartedsoftware.slack.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	54.211.89.16,54.87.197.95,18.214.242.166	59.000000,59.000000,59.000000	F
+1623187697.134351	CXt8j2qxVbJ1ZDh0g	192.168.1.77	54325	8.8.8.8	53	udp	63813	0.005611	unchartedsoftware.slack.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	54.211.89.16,54.87.197.95,18.214.242.166	59.000000,59.000000,59.000000	F
+1623187698.815532	CS8lM6iPYYoQxlCO5	71.127.52.28	57375	8.8.8.8	53	udp	29178	0.006415	edgeapi.slack.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	prod-haproxy-edge-nlb-eip-3f4c246e4b1ed994.elb.us-east-1.amazonaws.com,54.204.130.107,18.233.140.209,52.54.155.203	29.000000,8.000000,8.000000,8.000000	F
+1623187698.815363	ClccEV34ozP5yZ57s5	192.168.1.77	57375	8.8.8.8	53	udp	29178	0.006744	edgeapi.slack.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	prod-haproxy-edge-nlb-eip-3f4c246e4b1ed994.elb.us-east-1.amazonaws.com,54.204.130.107,18.233.140.209,52.54.155.203	29.000000,8.000000,8.000000,8.000000	F
+1623187699.276680	CKPTb03pm0QNubnuLh	71.127.52.28	52024	8.8.8.8	53	udp	55403	0.003534	d.dropbox.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	d.v.dropbox.com,d-edge.v.dropbox.com,162.125.8.20	247.000000,57.000000,57.000000	F
+1623187699.276502	CwY8K320VVQzElV5ih	192.168.1.77	52024	8.8.8.8	53	udp	55403	0.003862	d.dropbox.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	d.v.dropbox.com,d-edge.v.dropbox.com,162.125.8.20	247.000000,57.000000,57.000000	F
+1623187699.475479	CmTtJG3F4MtB6YvQW6	71.127.52.28	55448	8.8.8.8	53	udp	15300	0.005622	www.dropbox.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	www-env.dropbox-dns.com,162.125.6.18	49.000000,59.000000	F
+1623187699.475305	CubIdL3qreQ96vdAVh	192.168.1.77	55448	8.8.8.8	53	udp	15300	0.005932	www.dropbox.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	www-env.dropbox-dns.com,162.125.6.18	49.000000,59.000000	F
+1623187699.490760	CpByHK2sQjscg75YB2	71.127.52.28	50977	8.8.8.8	53	udp	6226	-	netmon-control.dropbox.com	1	C_INTERNET	1	A	3	NXDOMAIN	F	F	T	F	0	-	-	F
+1623187699.490583	CO0nUa41mwTU2hYLNc	192.168.1.77	50977	8.8.8.8	53	udp	6226	-	netmon-control.dropbox.com	1	C_INTERNET	1	A	3	NXDOMAIN	F	F	T	F	0	-	-	F
+1623187705.361942	C9Ycw6fVtmJnrIVZh	71.127.52.28	50961	8.8.8.8	53	udp	17013	-	lb._dns-sd._udp.0.1.168.192.in-addr.arpa	1	C_INTERNET	12	PTR	3	NXDOMAIN	F	F	T	F	0	-	-	T
+1623187705.361748	Cmv1haig5OWNhMFz9	192.168.1.50	50961	8.8.8.8	53	udp	17013	-	lb._dns-sd._udp.0.1.168.192.in-addr.arpa	1	C_INTERNET	12	PTR	3	NXDOMAIN	F	F	T	F	0	-	-	T
+1623187710.050941	Cqgvie2qhE18qRwlF	71.127.52.28	58775	8.8.8.8	53	udp	52876	0.005335	e7641.g.akamaiedge.net	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	23.196.32.134	19.000000	F
+1623187710.050761	CC6wAU1E7KNlmsVoGe	192.168.1.77	58775	8.8.8.8	53	udp	52876	0.005662	e7641.g.akamaiedge.net	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	23.196.32.134	19.000000	F
+1623187712.460603	CXKoe01XjbMMXsd2Tf	71.127.52.28	45755	71.252.0.12	53	udp	6316	0.001585	dynamicdns.park-your-domain.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	104.219.249.157	402.000000	F
+1623187708.119731	CwfeaLx2cn7BuYsJk	192.168.1.39	5353	224.0.0.251	5353	udp	0	-	_spotify-connect._tcp.local	-	-	-	-	0	NOERROR	T	F	F	F	0	ee1519d9-ae41-5824-879e-cc14e60-0._spotify-connect._tcp.local,_spotify-connect._tcp.local	60.000000,60.000000	F
+1623187709.131610	CwfeaLx2cn7BuYsJk	192.168.1.39	5353	224.0.0.251	5353	udp	0	-	_spotify-connect._tcp.local	-	-	-	-	0	NOERROR	T	F	F	F	0	ee1519d9-ae41-5824-879e-cc14e60-0._spotify-connect._tcp.local,_spotify-connect._tcp.local	60.000000,60.000000	F
+1623187719.304016	CqyWYH3Mc8gBqz7eQd	192.168.1.77	5353	224.0.0.251	5353	udp	0	-	_rfb._tcp.local	1	C_INTERNET	12	PTR	-	-	F	F	F	F	0	-	-	F
+1623187719.304136	Cttjng21rQhsFFbCJ3	fe80::1462:3ff9:fd68:b0fc	5353	ff02::fb	5353	udp	0	-	_rfb._tcp.local	1	C_INTERNET	12	PTR	-	-	F	F	F	F	0	-	-	F
+1623187719.310901	C3K0vUaCCP8SJ77bh	192.168.1.199	5353	224.0.0.251	5353	udp	0	-	_rfb._tcp.local	1	C_INTERNET	12	PTR	-	-	F	F	F	F	0	-	-	F
+1623187719.312043	C4k6b9oI4SJqLLPse	fe80::c9f:10f3:3b0a:b833	5353	ff02::fb	5353	udp	0	-	_rfb._tcp.local	1	C_INTERNET	12	PTR	-	-	F	F	F	F	0	-	-	F
+#close	2024-11-05-16-39-07
