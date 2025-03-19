@@ -1,4 +1,12 @@
-(in-package :cleek)
+'(in-package :cleek)
+
+;; from fleek to support:
+;;
+;; * annotations (IP-LIKEs, default columns, default new column namer, modify at runtime)
+;; * DNS additions
+;; * modify column (turn /32 to /24 or w/e)
+;; * timestamp filter
+;; * productive (these can be handled in general by filters)
 
 ;; contains?, c?
 ;;; you could dispatch this so it works with: vectors and subnets.
