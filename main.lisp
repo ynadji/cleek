@@ -1,44 +1,5 @@
 (in-package :cleek)
 
-;; TODO: WITH-WRITER to handle the header/footer mumbo jumbo. hmm, that won't
-;; work in the case where we have multiple readers and one writer... probably
-;; doesn't need to be abstracted that much.
-(defun read-transform-write (in-path out-path &key (output-format :zeek))
-  (let (*field-names* *types* *header-already-printed?*)
-    (with-open-log (in in-path)
-      (with-open-log (out out-path :direction :output :if-exists :supersede)
-        (let ((reader (make-reader in)))
-          (multiple-value-bind (writer write-header write-footer) (make-writer out *field-names* output-format *types*)
-            (when write-header
-              (funcall write-header))
-            (loop for record = (funcall reader)
-                  while record
-                  do (funcall writer record))
-            (when write-footer
-              (funcall write-footer))))))))
-
-;; TODO: how easy is it to build up transducers? you probably need a macro that
-;; takes a bunch of existing functions (or forms) that get T:COMPd together in
-;; the correct order (and wrapped by a lambda for forms) and used here. you
-;; always need the T:TAKE-WHILE #'IDENTITY so when the READER returns NIL it
-;; knows to stop. it will probably be interesting to see how the LOOP vs.
-;; T:TRANSDUCE implementations are different (perf- and code-wise).
-(defun read-transform-write-transducer (in-path out-path &key (output-format :zeek))
-  (let (*field-names* *types* *header-already-printed?*)
-    (with-open-log (in in-path)
-      (with-open-log (out out-path :direction :output :if-exists :supersede)
-        (let ((reader (make-reader in)))
-          (multiple-value-bind (writer write-header write-footer) (make-writer out *field-names* output-format *types*)
-            (when write-header
-              (funcall write-header))
-            (t:transduce (t:take-while #'identity)
-                         (lambda (&optional acc record)
-                           (declare (ignore acc))
-                           (when record (funcall writer record)))
-                         (t::make-generator :func reader))
-            (when write-footer
-              (funcall write-footer))))))))
-
 (defun cat/options ()
   (list (clingon:make-option :string
                              :description "Output file"
@@ -66,28 +27,6 @@
                              :long-name "filter"
                              :initial-value "t"
                              :key :filter-expr)))
-
-(defun cat-logs (output-file output-format &rest input-files)
-  (when input-files
-   (let (*field-names* *types* write-footer *header-already-printed?*)
-     (with-open-log (in (first input-files))
-       (funcall (make-reader in))) ; read a record so we can get the field-names/types.
-     (with-open-log (out output-file :direction :output :if-exists :supersede)
-       (loop for in-path in input-files do
-         (with-open-log (in in-path)
-           (let ((reader (make-reader in)))
-             (multiple-value-bind (writer write-header w-f)
-                 (make-writer out output-format)
-               (setf write-footer w-f)
-               (when write-header
-                 (funcall write-header))
-               (t:transduce (t:take-while #'identity)
-                            (lambda (&optional acc record)
-                              (declare (ignore acc))
-                              (when record (funcall writer record)))
-                            (t::make-generator :func reader))))))
-       (when write-footer
-         (funcall write-footer))))))
 
 (defun cat-logs-string (output-file output-format filter-expr &rest input-files)
   (multiple-value-bind (filter-func columns) (compile-runtime-filters filter-expr)
@@ -126,6 +65,15 @@
 (defun perf-test (&optional (output-format :zeek) (filter-expr "t") (path #P"~/tmp/test2.log"))
   (cat-logs-string path output-format filter-expr #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_00:00:00-01:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_01:00:00-02:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_02:00:00-03:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_03:00:00-04:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_04:00:00-05:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_05:00:00-06:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_06:00:00-07:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_07:00:00-08:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_08:00:00-09:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_09:00:00-10:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_10:00:00-11:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_11:00:00-12:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_12:00:00-13:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_13:00:00-14:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_14:00:00-15:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_15:00:00-16:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_16:00:00-17:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_17:00:00-18:00:00-0500.log" #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_18:00:00-19:00:00-0500.log"))
     ;;(cat-logs-string path output-format filter-func columns #P"~/code/cleek/data/homenet-uncompressed/conn_20241106_18:00:00-19:00:00-0500.log")))
+
+;; TODO: performance isn't _too_ bad. if we are only filtering, and r/w JSON, we're already ~3x faster than the
+;; equivalent `cat log | jq 'select(.field) == "val"` if we just filter and ~2x faster if we have to reconstruct the
+;; line from the map. that said, it is still quite a bit slower than parsing from the zeek logs (~7x slower). maybe try
+;; JSOWN and JSOON to see what kind of boost you get there? beyond that, getting the typed output correct when
+;; converting is the higher priority for now. JSOON prob only improves things on x86. but see if JSOWN is generating
+;; SIMD instructions because if so, you could copy what's there to JZON maybe?
+(defun perf-test-json (&optional (output-format :json) (filter-expr "t") (path #P"~/tmp/test2.log"))
+  (cat-logs-string path output-format filter-expr #P"~/code/cleek/data/json/homenet-uncompressed.log"))
 
 (defun cat/handler (cmd)
   (in-package :cleek)
@@ -171,6 +119,8 @@
 ;;
 ;; lol, actually you can just use #.#I("1.2.3.4") and it does what you
 ;; want :).
+;;
+;; TODO: Maybe worth experimenting with caching the filter function?
 (defun compile-runtime-filters (s)
   (let* ((filters (update-keywords
                    (with-input-from-string (in s)
@@ -180,8 +130,6 @@
             columns
             filters)))
 
-;; TODO: also read from *stdin*? less important since i can directly read
-;; compressed files.
 (defun cat/command ()
   "Concatenate Zeek logs"
   (clingon:make-command
