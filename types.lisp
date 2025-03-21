@@ -22,7 +22,7 @@
   (format nil "~d.~6,'0d" (local-time:timestamp-to-unix ts) (local-time:nsec-of ts)))
 
 (defun zeek-ts-string-to-timestamp (s)
-  (destructuring-bind (secs nsecs) (mapcar #'parse-integer (str:split #\. s))
+  (destructuring-bind (secs nsecs) (mapcar #'parse-integer (split-sequence #\. s))
     (local-time:unix-to-timestamp secs :nsec nsecs)))
 
 ;; type conversions between zeek, JSON, and lisp.
@@ -67,7 +67,7 @@
            (cl-ppcre:register-groups-bind (nil primitive-type) 
                ("(set|vector)\\[(.*?)\\]" type-string)
              (mapcar (lambda (f) (parse-zeek-type f (string->keyword primitive-type)))
-                     (str:split *zeek-set-separator* field))))
+                     (split-sequence *zeek-set-separator* field))))
           (t (funcall (ax:assoc-value *zeek-primitive-type-parsers* type) field)))))
 
 (defun unparse-zeek-type (field type)
@@ -83,6 +83,9 @@
                                field))))
           (t (funcall (ax:assoc-value *zeek-stringify* type) field)))))
 
+;; TODO: make these learnable, i.e., provide a bunch of zeek logs, output a file of these defparameter calls and load
+;; the file if it's present. as long as you fully search the data structure it's fine to have duplicate "keys" in the
+;; alist.
 (defparameter *path->fields*
   '(
     (:analyzer . (:ts :cause :analyzer_kind :analyzer_name :uid :fuid :id.orig_h :id.orig_p :id.resp_h :id.resp_p :failure_reason :failure_data))
@@ -95,7 +98,7 @@
     (:ssh . (:ts :uid :id.orig_h :id.orig_p :id.resp_h :id.resp_p :version :auth_success :auth_attempts :direction :client :server :cipher_alg :mac_alg :compression_alg :kex_alg :host_key_alg :host_key))
     (:ssl . (:ts :uid :id.orig_h :id.orig_p :id.resp_h :id.resp_p :version :cipher :curve :server_name :resumed :last_alert :next_protocol :established :ssl_history :cert_chain_fps :client_cert_chain_fps :sni_matches_cert))
     (:weird . (:ts :uid :id.orig_h :id.orig_p :id.resp_h :id.resp_p :name :addl :notice :peer :source))
-  ))
+    ))
 
 (defparameter *path->types*
   '(

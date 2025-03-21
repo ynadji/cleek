@@ -29,7 +29,7 @@
 
 (defun parse-zeek-header (zeek-log)
   (flet ((parse-header-values (line)
-           (mapcar #'string->keyword (rest (str:split *zeek-field-separator* line)))))
+           (mapcar #'string->keyword (rest (split-sequence *zeek-field-separator* line)))))
     (let ((more-header? t))
       (loop for line = (read-line (zeek-stream zeek-log) nil)
             while (and more-header? line)
@@ -158,7 +158,7 @@
    (ecase (zeek-format zeek-log)
      (:zeek
       (clrhash (zeek-map zeek-log))
-      (loop for field in (str:split *zeek-field-separator* (zeek-line zeek-log))
+      (loop for field in (split-sequence *zeek-field-separator* (zeek-line zeek-log))
             for name in (zeek-fields zeek-log)
             do (setf (gethash name (zeek-map zeek-log)) field)))
      (:json
