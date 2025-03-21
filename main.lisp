@@ -124,7 +124,7 @@
 (defun compile-runtime-filters (s)
   (let* ((filters (update-keywords
                    (with-input-from-string (in s)
-                     (read in nil))))
+                     (macroexpand-1 (read in nil)))))
          (columns (remove-if-not #'keywordp (ax:flatten filters))))
     (values (compile nil `(lambda (log) (declare (ignorable log)) ,filters))
             columns
