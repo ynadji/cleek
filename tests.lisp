@@ -11,12 +11,16 @@
   (:import-from #:cleek
                 #:parse-zeek-type
                 #:unparse-zeek-type
-                #:cat-logs)
+                #:cat-logs-string
+                #:string->keyword)
+  (:import-from #:cl-interpol
+                #:enable-interpol-syntax)
   (:export #:tests))
 
 (in-package :cleek/tests)
 
 (enable-ip-syntax)
+(enable-interpol-syntax)
 
 (def-suite tests)
 (def-suite types)
@@ -102,36 +106,26 @@
 
 (in-suite end-to-end)
 
-(defvar *test-inputs-dir* (asdf:system-relative-pathname "cleek" "data/test-inputs/"))
+(defvar *test-inputs-dir* (asdf:system-relative-pathname "cleek" "data/test-input/"))
 (defvar *baselines-dir* (asdf:system-relative-pathname "cleek" "data/baselines/"))
 (defvar *diff-script* (asdf:system-relative-pathname "cleek" "scripts/diff.sh"))
 
-;; one of the zst files keeps getting written with corruption for some reason...
-
-(defvar *update-baselines* nil)
-
-(test read-write-log
-  (loop for test-input in (uiop:directory-files *test-inputs-dir*) do
-    (loop for suffix in (list "log" "log.gz") do ; TODO: add log.zst when you fix that bug
-      (loop for output-type in '(:zeek :json)
-            for input-format = (if (str:contains? "json" (file-namestring test-input)) "json" "zeek")
-            for output-format = (str:downcase (string output-type))
-            for namestring = (format nil "conn.~a.~a.~a" input-format output-format suffix)
-            for output-file = (merge-pathnames (uiop:temporary-directory) namestring)
-            for baseline-file = (merge-pathnames *baselines-dir* namestring)
-            do
-               (cat-logs output-file output-type test-input)
-               ;;(format t "~%Input: ~a~&Output: ~a~&Baseline: ~a~&Output type: ~a~&"
-               ;;        test-input output-file baseline-file output-type)
-               (multiple-value-bind (stdout stderr exit-code)
-                   (uiop:run-program (format nil "~a ~a ~a"
-                                             *diff-script* baseline-file output-file)
-                                     :ignore-error-status t
-                                     )
-
-                 (declare (ignorable stdout stderr))
-                 (when (and *update-baselines* (not (zerop exit-code)))
-                   (uiop:copy-file output-file baseline-file))
-                 (is (zerop exit-code)
-                     "~%Input: ~a~&Output: ~a~&Baseline: ~a~&Output type: ~a~&Exit code: ~a~%~%Diff: ~a"
-                     test-input output-file baseline-file output-type exit-code stderr))))))
+(test cat
+  ;; TODO: make sure you're testing against the output format's input file.
+  ;; UIDs are different too. as are the paths, timestamps, open/close times.
+  (loop for input-format in '("zeek" "json")
+        for tmp-dir = (uiop:temporary-directory) do
+          (loop for output-format in (list input-format) do ;in '("zeek" "json") do
+            (loop for input-path in (uiop:directory-files (merge-pathnames #?"${input-format}/" *test-inputs-dir*))
+                  for basename = (pathname-name input-path)
+                  for output-path = (merge-pathnames basename tmp-dir)
+                  do ;;(format t "(cat-logs-string ~a ~a ~a ~a)~%" output-path (string->keyword output-format) "t" input-path)
+                     (cat-logs-string output-path (string->keyword output-format) "t" input-path)
+                     (multiple-value-bind (stdout stderr exit-code)
+                         (uiop:run-program (format nil "~a ~a ~a"
+                                                   *diff-script* input-path output-path)
+                                           :ignore-error-status t)
+                       (declare (ignorable stdout stderr))
+                       (is (zerop exit-code)
+                           "~%Input: ~a~&Input Format: ~a~&Output Format: ~a~&Exit code: ~a~%~%Diff: ~a"
+                           input-path input-format output-format exit-code stdout))))))

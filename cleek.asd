@@ -3,13 +3,14 @@
   :description "DNS manipulation library"
   :author "Yacin Nadji <yacin@defmacro.cc>"
   :license "MIT"
-  :depends-on ("str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns" "com.inuoe.jzon" "zstd" "chipz" "salza2" "babel" "local-time" "transducers" "clingon" "serapeum")
+  :depends-on ("str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns" "com.inuoe.jzon" "local-time" "transducers" "clingon" "serapeum" "split-sequence" "cl-interpol")
   :components ((:file "packages")
                (:file "types")
                (:file "io")
+               (:file "filters")
                (:file "main"))
   :defsystem-depends-on (:deploy)
-  :build-operation "deploy-op"
+  :build-operation "deploy-console-op"
   :build-pathname "cleek"
   :entry-point "cleek:main"
   :in-order-to ((test-op (test-op :cleek/tests))))
@@ -19,12 +20,6 @@
   :license "MIT"
   :depends-on ("cleek" "fiveam" "str")
   :components ((:file "tests"))
-  :perform (test-op (o c) (progn (symbol-call :fiveam '#:run!
-                                              (uiop:find-symbol* '#:tests
-                                                                 '#:cleek/tests))
-                                 (symbol-call :fiveam '#:run!
-                                              (uiop:find-symbol* '#:types
-                                                                 '#:cleek/tests))
-                                 (symbol-call :fiveam '#:run!
-                                              (uiop:find-symbol* '#:end-to-end
-                                                                 '#:cleek/tests)))))
+  :perform (test-op (o c) (loop for suite in '(#:tests #:types #:end-to-end)
+                                do (symbol-call :fiveam '#:run!
+                                                (uiop:find-symbol* suite '#:cleek/tests)))))

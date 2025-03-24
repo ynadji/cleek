@@ -1,0 +1,10 @@
+#separator \x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	weird
+#open	2024-11-05-16-39-07
+#fields	ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	name	addl	notice	peer	source
+#types	time	string	addr	port	addr	port	string	string	bool	string	string
+1623187712.526758	CP1KNa4zjYgZRONa67	71.127.52.28	56899	104.219.249.157	80	bad_HTTP_request	-	F	zeek	HTTP
+#close	2024-11-05-16-39-07
