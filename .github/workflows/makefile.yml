@@ -11,6 +11,9 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    env:
+      LISP: sbcl-bin
+
     steps:
     - name: Foo
       run: sudo mkdir ~/common-lisp
