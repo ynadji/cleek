@@ -1,7 +1,4 @@
 build:
-	sbcl --eval "(progn (asdf:make :cleek) (quit))"
-
-build-ros:
 	ros run --eval "(progn (asdf:make :cleek) (quit))"
 
 coverage:
