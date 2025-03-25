@@ -47,6 +47,6 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        name: lisp-bin
-        path: bin
+        name: cleek
+        path: bin/cleek
         overwrite: true
