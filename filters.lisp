@@ -1,4 +1,4 @@
-'(in-package :cleek)
+(in-package :cleek)
 
 ;; from fleek to support:
 ;;
