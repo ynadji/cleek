@@ -32,8 +32,9 @@ jobs:
         path: common-lisp/cl-tld
     - uses: 40ants/setup-lisp@v4
 
-    - name: Install SBCL
+    - name: Install dependencies
       run: |
+        ros run -- --version
         sudo mv common-lisp /root/
         sudo ls -al /root/common-lisp
         sudo ln -s $(pwd) /root/common-lisp/
