@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [ "main" ]
 
-# (load "~/quicklisp/setup.lisp") (ql:add-to-init-file)
 jobs:
   build:
 
@@ -28,26 +27,11 @@ jobs:
       with:
         repository: lu4nx/cl-tld
         path: common-lisp/cl-tld
+    - uses: 40ants/setup-lisp@v4
 
     - name: Install SBCL
       run: |
-        sudo apt-get update
-        sudo apt-get install -y sbcl zstd
-        sudo curl -O https://beta.quicklisp.org/quicklisp.lisp
-        sudo sbcl --load quicklisp.lisp --eval '(progn (quicklisp-quickstart:install) (quit))'
-
-        sudo ls -al /root/quicklisp
-        sudo mv common-lisp /root/
-        sudo ls -al /root/common-lisp
-
-        echo #-quicklisp > .sbclrc
-        echo '(let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname)))) (when (probe-file quicklisp-init) (load quicklisp-init)))' >> .sbclrc
-
-        sudo mv .sbclrc /root
-        sudo cat /root/.sbclrc
-
-        sudo ln -s $(pwd) /root/common-lisp/
-        sudo sbcl --eval '(ql:quickload (list "cleek" "fiveam"))'
+        sudo ros run --eval '(ql:quickload (list "cleek" "fiveam"))'
 
     - name: Test CLEEK
       run: sudo make test
