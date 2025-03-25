@@ -1,3 +1,9 @@
+#+sb-core-compression
+(defmethod asdf:perform ((o asdf:image-op) (c asdf:system))
+  (uiop:dump-image (asdf:output-file o c)
+                   :executable t
+                   :compression t))
+
 (asdf:defsystem cleek
   :serial t
   :description "DNS manipulation library"
@@ -9,9 +15,8 @@
                (:file "io")
                (:file "filters")
                (:file "main"))
-  :defsystem-depends-on (:deploy)
-  :build-operation "deploy-console-op"
-  :build-pathname "cleek"
+  :build-operation "program-op"
+  :build-pathname "bin/cleek"
   :entry-point "cleek:main"
   :in-order-to ((test-op (test-op :cleek/tests))))
 
