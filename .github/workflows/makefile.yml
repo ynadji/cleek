@@ -34,6 +34,9 @@ jobs:
 
     - name: Install SBCL
       run: |
+        sudo mv common-lisp /root/
+        sudo ls -al /root/common-lisp
+        sudo ln -s $(pwd) /root/common-lisp/
         sudo ros run --eval '(ql:quickload (list "cleek" "fiveam"))'
 
     - name: Test CLEEK
