@@ -82,7 +82,10 @@
                   (parse-zeek-header zeek-log)
                   (let ((fields-diff (set-exclusive-or prev-fields (zeek-fields zeek-log))))
                     (when (and prev-fields fields-diff)
-                      (error "Fields differ in zeek logs!~%	Old: ~a~%	New: ~a~%	Diff: ~a~%" prev-fields (zeek-fields zeek-log) fields-diff))))
+                      (error "Fields differ in zeek logs!~%	Old: ~a~%	New: ~a~%	Diff: ~a~%" prev-fields (zeek-fields zeek-log) fields-diff)))
+                  ;; skip empty files that go directly from header to #close.
+                  (when (str:starts-with? "#close" (zeek-line zeek-log))
+                    (next-record zeek-log)))
                 zeek-log)
                (t zeek-log))))
 
