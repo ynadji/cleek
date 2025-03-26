@@ -85,7 +85,8 @@
         (compression (string->keyword (clingon:getopt cmd :compression)))
         (filter-expr (clingon:getopt cmd :filter-expr)))
     (declare (ignore compression))
-    (apply #'cat-logs-string output-file format filter-expr args)))
+    (handler-bind ((error (lambda (condition) (invoke-debugger condition))))
+      (apply #'cat-logs-string output-file format filter-expr args))))
 
 (defparameter *nicknames*
   '((:o_h . :id.orig_h)
