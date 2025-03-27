@@ -95,6 +95,13 @@
     (:r_p . :id.resp_p)
     (:q . :query)))
 
+(defun column? (symbol)
+  (and (symbolp symbol) (char= #\@ (char (symbol-name symbol) 0))))
+
+(defun column->keyword (symbol)
+  (when (column? symbol)
+    (intern (subseq (symbol-name symbol) 1) :keyword)))
+
 ;; TODO: terse regex func? e.g., (~ :o_h "^[0-4]\.") or something?
 ;; if you _just_ do this for string stuff, you'll know anything that uses it
 ;; needs to have strings. otherwise fully parse. but uhh what about mixed?
@@ -102,14 +109,22 @@
 ;; and fully parsed versions? i guess you could just define a list of funcs
 ;; and stick with those? what if you want to use something else?
 ;; TODO: save common filters to a file, show in --help output or something?
-(defun update-keywords (form)
+;;
+;; so using keywords prevents me from using functions with keyword arguments :|. what if i do:
+;;
+;; @field to get the string, and
+;; p@field to get the fully parsed field?
+;;
+;; still need to think about the JSON stuff cuz that's messy.
+(defun update-columns (form)
   ;; (eq form 'line) didn't work and i don't know why...
   (cond ((and (symbolp form)
               (string= "LINE" (symbol-name form))) '(zeek-line log))
-        ((keywordp form) `(get-value log ,(or (ax:assoc-value *nicknames* form) form)))
+        ((column? form) (let ((form (column->keyword form)))
+                          `(get-value log ,(or (ax:assoc-value *nicknames* form) form))))
         ((atom form) form)
-        (t (cons (update-keywords (car form))
-                 (update-keywords (cdr form))))))
+        (t (cons (update-columns (car form))
+                 (update-columns (cdr form))))))
 
 ;; TODO: how do i compile #I("1.2.3.4") into a constant based on what
 ;; its expansion (NA::MAKE-IP-LIKE "1.2.3.4") becomes so i don't run it
@@ -123,10 +138,10 @@
 ;;
 ;; TODO: Maybe worth experimenting with caching the filter function?
 (defun compile-runtime-filters (s)
-  (let* ((filters (update-keywords
-                   (with-input-from-string (in s)
-                     (macroexpand-1 (read in nil)))))
-         (columns (remove-if-not #'keywordp (ax:flatten filters))))
+  (let* ((raw-filters (with-input-from-string (in s)
+                        (macroexpand-1 (read in nil))))
+         (filters (update-columns raw-filters))
+         (columns (mapcar #'column->keyword (remove-if-not #'column? (ax:flatten raw-filters)))))
     (values (compile nil `(lambda (log) (declare (ignorable log)) ,filters))
             columns
             filters)))
