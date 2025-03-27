@@ -145,14 +145,18 @@
                         (macroexpand-1 (read in nil))))
          (filters (update-columns raw-filters))
          (columns (mapcar #'or-nickname (mapcar #'column->keyword (remove-if-not #'column? (ax:flatten raw-filters))))))
-    (values (compile nil `(lambda (log) (declare (ignorable log)) ,filters))
+    (values (compile nil `(lambda (log) (declare (ignorable log))
+                            (restart-case ,filters
+                              (drop-line () :report (lambda (stream)
+                                                      (format stream "DROP-LINE: \"~a\"" (zeek-line log))) nil)
+                              (keep-line () t))))
             columns
             filters)))
 
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.2.0"
+   :version "0.3.0"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
