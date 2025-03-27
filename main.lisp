@@ -95,6 +95,9 @@
     (:r_p . :id.resp_p)
     (:q . :query)))
 
+(defun or-nickname (column)
+  (or (ax:assoc-value *nicknames* column) column))
+
 (defun column? (symbol)
   (and (symbolp symbol) (char= #\@ (char (symbol-name symbol) 0))))
 
@@ -121,7 +124,7 @@
   (cond ((and (symbolp form)
               (string= "LINE" (symbol-name form))) '(zeek-line log))
         ((column? form) (let ((form (column->keyword form)))
-                          `(get-value log ,(or (ax:assoc-value *nicknames* form) form))))
+                          `(get-value log ,(or-nickname form))))
         ((atom form) form)
         (t (cons (update-columns (car form))
                  (update-columns (cdr form))))))
@@ -141,7 +144,7 @@
   (let* ((raw-filters (with-input-from-string (in s)
                         (macroexpand-1 (read in nil))))
          (filters (update-columns raw-filters))
-         (columns (mapcar #'column->keyword (remove-if-not #'column? (ax:flatten raw-filters)))))
+         (columns (mapcar #'or-nickname (mapcar #'column->keyword (remove-if-not #'column? (ax:flatten raw-filters))))))
     (values (compile nil `(lambda (log) (declare (ignorable log)) ,filters))
             columns
             filters)))
