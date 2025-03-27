@@ -150,12 +150,11 @@
             filters)))
 
 (defun cat/command ()
-  "Concatenate Zeek logs"
   (clingon:make-command
    :name "cleek"
-   :version "0.1.0"
+   :version "0.2.0"
    :usage "[ZEEK-LOG]..."
-   :description "Concatenate Zeek logs"
+   :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
    :options (cat/options)))
 
