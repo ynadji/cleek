@@ -11,8 +11,8 @@
                              :description "Output format"
                              :short-name #\f
                              :long-name "output-format"
-                             :items '("zeek" "json")
-                             :initial-value "zeek"
+                             :items '("zeek" "json" "input-format")
+                             :initial-value "input-format"
                              :key :format)
         (clingon:make-option :choice
                              :description "Output compression"
@@ -43,6 +43,8 @@
             (push "/dev/stdin" input-files))
           (loop for in-path in input-files do
             (with-zeek-log (zeek-log in-path)
+              (when (eq output-format :input-format)
+                (setf output-format (zeek-format zeek-log)))
               (write-zeek-header zeek-log out output-format)
               (when columns
                 (ecase (zeek-format zeek-log)
@@ -178,7 +180,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.3.0"
+   :version "0.4.1"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
