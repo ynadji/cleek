@@ -50,12 +50,30 @@
       (ax:reversef (zeek-raw-header zeek-log))
       zeek-log)))
 
+(defun has-field? (zeek-log field)
+  (ecase (zeek-format zeek-log)
+    ;; TODO: these are always strings. what about when we want not strings?
+    (:zeek (field->idx zeek-log field))
+    ;; TODO: these are always "parsed" from jzon
+    (:json (gethash field (zeek-map zeek-log)))))
+
 (defun get-value (zeek-log field)
   (ecase (zeek-format zeek-log)
     ;; TODO: these are always strings. what about when we want not strings?
     (:zeek (aref (zeek-row-strings zeek-log) (field->idx zeek-log field)))
     ;; TODO: these are always "parsed" from jzon
     (:json (gethash field (zeek-map zeek-log)))))
+
+(defun (setf get-value) (new-value zeek-log field)
+  (if (has-field? zeek-log field)
+      (prog1 (ecase (zeek-format zeek-log)
+               (:zeek (setf (aref (zeek-row-strings zeek-log) (field->idx zeek-log field)) new-value))
+               (:json (setf (gethash field (zeek-map zeek-log)) new-value)))
+        (setf (zeek-modified? zeek-log) t))
+      (prog1 (ecase (zeek-format zeek-log)
+               (:zeek (error "Defining new values for zeek logs not implemented."))
+               (:json (setf (gethash field (zeek-map zeek-log)) new-value)))
+        (setf (zeek-modified? zeek-log) t))))
 
 ;; TODO: Make this work with the condition system
 (defun open-zeek-log (&key filepath stream)
@@ -157,17 +175,19 @@
 ;; TODO: i probably don't need this anymore. just something that
 ;; writes out a json log.
 (defun ensure-map (zeek-log)     ; TODO: add parse for :parsed-map
-  (when (eq :unparsed (zeek-status zeek-log))
+  (when (member (zeek-status zeek-log) '(:unparsed :row-strings))
    (ecase (zeek-format zeek-log)
      (:zeek
       (clrhash (zeek-map zeek-log))
       (loop for field in (split-sequence *zeek-field-separator* (zeek-line zeek-log))
             for name in (zeek-fields zeek-log)
-            do (setf (gethash name (zeek-map zeek-log)) field)))
+            for type in (zeek-types zeek-log)
+            do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)
+                     (zeek-status zeek-log) :zeek-map)))
      (:json
       (clrhash (zeek-map zeek-log))
-      (setf (zeek-map zeek-log) (jzon:parse (zeek-line zeek-log) :key-fn #'string->keyword))))
-   (setf (zeek-status zeek-log) :string-map)))
+      (setf (zeek-map zeek-log) (jzon:parse (zeek-line zeek-log) :key-fn #'string->keyword)
+            (zeek-status zeek-log) :jzon-map)))))
 
 (defun ensure-fields (zeek-log)
   (unless (zeek-fields zeek-log)
@@ -202,15 +222,34 @@
              (format stream "~a" (generate-zeek-header (zeek-fields zeek-log) (zeek-types zeek-log)))))))
 
 ;; TODO: handle set/vector types appropriately.
+;;
+;; with modified you have a handful of cases now:
+;; zeek->zeek, only modifying existing fields vs. adding
+;;   * i guess with this you can just store the other fields in the map?
+;; basically everything else requires creating the map, no?
 (defun write-zeek-log-line (zeek-log stream format)
-  (cond ((and (not (zeek-modified? zeek-log)) (eq format (zeek-format zeek-log)))
-         (write-line (zeek-line zeek-log) stream))
-        ((not (zeek-modified? zeek-log))
-         (ensure-map zeek-log)
-         (ensure-fields zeek-log)
-         (ecase format
-           (:json (jzon:stringify (zeek-map zeek-log) :stream stream) (terpri stream))
-           (:zeek (format stream (format nil "~~{~~a~~^~C~~}~~%" *zeek-field-separator*)
-                          (loop for field-name in (zeek-fields zeek-log)
-                                collect (or (gethash field-name (zeek-map zeek-log) "-") "-"))))))
-        (t (error "Modified log writing not supported."))))
+  (let ((same-format? (eq format (zeek-format zeek-log))))
+    (cond ((and (not (zeek-modified? zeek-log)) same-format?)
+           (write-line (zeek-line zeek-log) stream))
+          ((not (zeek-modified? zeek-log))
+           (ensure-map zeek-log)
+           (ensure-fields zeek-log)
+           (ecase format
+             (:json (jzon:stringify (if (eq (zeek-status zeek-log) :zeek-map)
+                                        (jsonify-zeek-map (zeek-map zeek-log))
+                                        (zeek-map zeek-log)) :stream stream) (terpri stream))
+             (:zeek (format stream (format nil "~~{~~a~~^~C~~}~~%" *zeek-field-separator*)
+                            (loop for field-name in (zeek-fields zeek-log)
+                                  collect (or (gethash field-name (zeek-map zeek-log) "-") "-"))))))
+          ((and same-format? (zeek-modified? zeek-log))
+           (ecase format
+             (:json (jzon:stringify (if (eq (zeek-status zeek-log) :zeek-map)
+                                        (jsonify-zeek-map (zeek-map zeek-log))
+                                        (zeek-map zeek-log)) :stream stream) (terpri stream))
+             (:zeek (ecase (zeek-status zeek-log)
+                      (:row-strings (loop for i from 1 for field across (zeek-row-strings zeek-log)
+                                             do (princ field stream)
+                                             when (< i (length (zeek-row-strings zeek-log)))
+                                               do (princ *zeek-field-separator* stream))
+                       (terpri stream))))))
+          (t (error "Modified & format change not implemented!")))))

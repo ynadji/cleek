@@ -120,7 +120,7 @@
                   for basename = (pathname-name input-path)
                   for output-path = (merge-pathnames basename tmp-dir)
                   do ;;(format t "(cat-logs-string ~a ~a ~a ~a)~%" output-path (string->keyword output-format) "t" input-path)
-                     (cat-logs-string output-path (string->keyword output-format) "t" input-path)
+                     (cat-logs-string output-path (string->keyword output-format) nil "t" input-path)
                      (multiple-value-bind (stdout stderr exit-code)
                          (uiop:run-program (format nil "~a ~a ~a"
                                                    *diff-script* input-path output-path)
@@ -137,7 +137,7 @@
           count (char/= #\# (char line 0)))))
 
 (test filters
-  (enable-ip-syntax) ; needed to add this or the #I()s were failing...
+  (enable-ip-syntax)           ; needed to add this or the #I()s were failing...
   (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory)))
         (ssh-log (merge-pathnames "zeek/ssh.log" *test-inputs-dir*))
         (ssh-log-json (merge-pathnames "json/ssh.log" *test-inputs-dir*))
@@ -147,28 +147,28 @@
     (is (= 2 (count-rows ssh-log) (count-rows ssh-log-json)))
     (is (= 481 (count-rows conn-log) (count-rows conn-log-json)))
 
-    (cat-logs-string test-output :zeek "(string= @direction \"INBOUND\")" ssh-log)
+    (cat-logs-string test-output :zeek nil "(string= @direction \"INBOUND\")" ssh-log)
     (is (= 1 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
-    (cat-logs-string test-output :json "(string= @direction \"INBOUND\")" ssh-log-json)
-    (is (= 1 (count-rows test-output)))
-    (uiop:delete-file-if-exists test-output)
-
-    (cat-logs-string test-output :zeek "(contains? #.#I(\"71.127.52.0/24\") #I(@r_h))" ssh-log)
-    (is (= 1 (count-rows test-output)))
-    (uiop:delete-file-if-exists test-output)
-    (cat-logs-string test-output :json "(contains? #.#I(\"71.127.52.0/24\") #I(@r_h))" ssh-log-json)
+    (cat-logs-string test-output :json nil "(string= @direction \"INBOUND\")" ssh-log-json)
     (is (= 1 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
-    (cat-logs-string test-output :zeek "(and (member @conn_state '(\"SF\" \"SHR\") :test 'equal) 
+    (cat-logs-string test-output :zeek nil "(contains? #.#I(\"71.127.52.0/24\") #I(@r_h))" ssh-log)
+    (is (= 1 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+    (cat-logs-string test-output :json nil "(contains? #.#I(\"71.127.52.0/24\") #I(@r_h))" ssh-log-json)
+    (is (= 1 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :zeek nil "(and (member @conn_state '(\"SF\" \"SHR\") :test 'equal) 
                                              (string= @proto \"tcp\") 
                                              (or (plusp (parse-integer @orig_bytes)) 
                                                  (plusp (parse-integer @resp_bytes))))" conn-log)
     (is (= 7 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
     ;; NB: because of how JSON is parsed, the bytes fields are already integers.
-    (cat-logs-string test-output :json "(and (member @conn_state '(\"SF\" \"SHR\") :test 'equal) 
+    (cat-logs-string test-output :json nil "(and (member @conn_state '(\"SF\" \"SHR\") :test 'equal) 
                                              (string= @proto \"tcp\") 
                                              (or (plusp @orig_bytes) 
                                                  (plusp @resp_bytes)))" conn-log-json)

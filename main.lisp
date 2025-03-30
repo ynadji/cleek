@@ -26,31 +26,41 @@
                              :short-name #\x
                              :long-name "filter"
                              :initial-value "t"
-                             :key :filter-expr)))
+                             :key :filter-expr)
+        (clingon:make-option :string
+                             :description "Mutator expression"
+                             :short-name #\m
+                             :long-name "mutator"
+                             :initial-value nil
+                             :key :mutator-expr)))
 
-(defun cat-logs-string (output-file output-format filter-expr &rest input-files)
-  (multiple-value-bind (filter-func columns) (compile-runtime-filters filter-expr)
-    (with-open-file (out output-file :direction :output :if-exists :supersede)
-      (when (zerop (length input-files))
-        (push "/dev/stdin" input-files))
-      (loop for in-path in input-files do
-        (with-zeek-log (zeek-log in-path)
-          (write-zeek-header zeek-log out output-format)
-          (when columns
-            (ecase (zeek-format zeek-log)
-              (:zeek (ensure-fields->idx zeek-log) (ensure-row-strings zeek-log))
-              (:json (ensure-map zeek-log))))
-          (loop while (zeek-line zeek-log)
-                do (when columns
-                     (ecase (zeek-format zeek-log)
-                       (:zeek (ensure-row-strings zeek-log))
-                       (:json (ensure-map zeek-log))))
-                   (when (funcall filter-func zeek-log)
-                     (write-zeek-log-line zeek-log out output-format))
-                   (next-record zeek-log))))
-      (when (eq output-format :zeek)
-        (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
-                (timestamp-to-zeek-open-close-string (local-time:now)))))))
+(defun cat-logs-string (output-file output-format mutator-expr filter-expr &rest input-files)
+  (multiple-value-bind (mutator-func mutator-columns) (compile-runtime-mutators mutator-expr)
+    (multiple-value-bind (filter-func filter-columns) (compile-runtime-filters filter-expr)
+      (let ((columns (union mutator-columns filter-columns)))
+        (with-open-file (out output-file :direction :output :if-exists :supersede)
+          (when (zerop (length input-files))
+            (push "/dev/stdin" input-files))
+          (loop for in-path in input-files do
+            (with-zeek-log (zeek-log in-path)
+              (write-zeek-header zeek-log out output-format)
+              (when columns
+                (ecase (zeek-format zeek-log)
+                  (:zeek (ensure-fields->idx zeek-log) (ensure-row-strings zeek-log))
+                  (:json (ensure-map zeek-log))))
+              (loop while (zeek-line zeek-log)
+                    do (when columns
+                         (ecase (zeek-format zeek-log)
+                           (:zeek (ensure-row-strings zeek-log))
+                           (:json (ensure-map zeek-log))))
+                       (when mutator-func
+                         (funcall mutator-func zeek-log))
+                       (when (funcall filter-func zeek-log)
+                         (write-zeek-log-line zeek-log out output-format))
+                       (next-record zeek-log))))
+          (when (eq output-format :zeek)
+            (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
+                    (timestamp-to-zeek-open-close-string (local-time:now)))))))))
 
 (defun cat-logs-string-multi (output-file &rest input-files)
   (with-open-file (out output-file :direction :output :if-exists :supersede)
@@ -83,10 +93,11 @@
         (output-file (clingon:getopt cmd :output))
         (format (string->keyword (clingon:getopt cmd :format)))
         (compression (string->keyword (clingon:getopt cmd :compression)))
-        (filter-expr (clingon:getopt cmd :filter-expr)))
+        (filter-expr (clingon:getopt cmd :filter-expr))
+        (mutator-expr (clingon:getopt cmd :mutator-expr)))
     (declare (ignore compression))
     (handler-bind ((error (lambda (condition) (invoke-debugger condition))))
-      (apply #'cat-logs-string output-file format filter-expr args))))
+      (apply #'cat-logs-string output-file format mutator-expr filter-expr args))))
 
 (defparameter *nicknames*
   '((:o_h . :id.orig_h)
@@ -152,6 +163,17 @@
                               (keep-line () t))))
             columns
             filters)))
+
+;; SETF is a macro that 
+(defun compile-runtime-mutators (s)
+  (when s
+    (let* ((raw-mutators (with-input-from-string (in s)
+                           (read in nil)))
+           (mutators (update-columns raw-mutators))
+           (columns (mapcar #'or-nickname (mapcar #'column->keyword (remove-if-not #'column? (ax:flatten raw-mutators))))))
+      (values (compile nil `(lambda (log) (declare (ignorable log)) ,(macroexpand-1 mutators)))
+              columns
+              mutators))))
 
 (defun cat/command ()
   (clingon:make-command
