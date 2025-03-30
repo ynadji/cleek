@@ -21,6 +21,10 @@
 (defun timestamp-to-zeek-ts-string (ts)
   (format nil "~d.~6,'0d" (local-time:timestamp-to-unix ts) (local-time:nsec-of ts)))
 
+(defun timestamp-to-zeek-ts (ts)
+  (+ (local-time:timestamp-to-unix ts)
+     (coerce (/ (local-time:nsec-of ts) (expt 10 6)) 'double-float)))
+
 (defun zeek-ts-string-to-timestamp (s)
   (destructuring-bind (secs nsecs) (mapcar #'parse-integer (split-sequence #\. s))
     (local-time:unix-to-timestamp secs :nsec nsecs)))
@@ -40,6 +44,12 @@
     (:enum . ,#'identity) ; just keep it as a string i suppose
     ))
 
+(defparameter *zeek-jsonify*
+  `((:bool . ,(lambda (x) (if x "T" "F")))
+    (:time . ,#'timestamp-to-zeek-ts)
+    (:addr . ,(lambda (x) (str:downcase (na:str x))))
+    (:subnet . ,(lambda (x) (str:downcase (na:str x))))))
+
 (defparameter *zeek-stringify*
   `((:bool . ,(lambda (x) (if x "T" "F")))
     (:count . ,#'write-to-string)
@@ -52,36 +62,6 @@
     (:addr . ,(lambda (x) (str:downcase (na:str x))))
     (:subnet . ,(lambda (x) (str:downcase (na:str x))))
     (:enum . ,#'identity)))
-
-;; TODO: might be premature optimization, but maybe:
-;; check for unset/empty
-;; check for primitive-type with when-let
-;; then do check for aggregates.
-(defun parse-zeek-type (field type)
-  (let ((type-string (keyword->string type)))
-    (cond ((or (string= field (string *zeek-unset-field*))
-               (string= field (string *zeek-empty-field*)))
-           field)
-          ((or (str:starts-with? "set" type-string)
-               (str:starts-with? "vector" type-string))
-           (cl-ppcre:register-groups-bind (nil primitive-type) 
-               ("(set|vector)\\[(.*?)\\]" type-string)
-             (mapcar (lambda (f) (parse-zeek-type f (string->keyword primitive-type)))
-                     (split-sequence *zeek-set-separator* field))))
-          (t (funcall (ax:assoc-value *zeek-primitive-type-parsers* type) field)))))
-
-(defun unparse-zeek-type (field type)
-  (let ((type-string (keyword->string type)))
-    (cond ((stringp field)
-           field)
-          ((or (str:starts-with? "set" type-string)
-               (str:starts-with? "vector" type-string))
-           (cl-ppcre:register-groups-bind (nil primitive-type) 
-               ("(set|vector)\\[(.*?)\\]" type-string)
-             (str:join *zeek-set-separator*
-                       (mapcar (lambda (f) (unparse-zeek-type f (string->keyword primitive-type)))
-                               field))))
-          (t (funcall (ax:assoc-value *zeek-stringify* type) field)))))
 
 ;; TODO: make these learnable, i.e., provide a bunch of zeek logs, output a file of these defparameter calls and load
 ;; the file if it's present. as long as you fully search the data structure it's fine to have duplicate "keys" in the
@@ -114,6 +94,11 @@
     (:weird . (:time :string :addr :port :addr :port :string :string :bool :string :string))
   ))
 
+(defparameter *field->type*
+  (remove-duplicates (loop for (nil . fields) in *path->fields*
+                           for (nil . types) in *path->types* append
+                                                              (loop for field in fields for type in types collect (cons field type))) :test #'equal))
+
 (defun infer-log-path-fields-types (zeek-log)
   (unless (zeek-path zeek-log)
     (ensure-map zeek-log)
@@ -127,3 +112,61 @@
                      (zeek-fields zeek-log) fields
                      (zeek-types zeek-log) types))
     zeek-log))
+
+;; TODO: might be premature optimization, but maybe:
+;; check for unset/empty
+;; check for primitive-type with when-let
+;; then do check for aggregates.
+(defun parse-zeek-type (field type)
+  (let ((type-string (keyword->string type)))
+    ;; unset should probably be 'null and empty should probably be #() (since '() is eq to nil)
+    (cond ((or (string= field (string *zeek-unset-field*))
+               (string= field (string *zeek-empty-field*)))
+           field)
+          ((or (str:starts-with? "set" type-string)
+               (str:starts-with? "vector" type-string))
+           (cl-ppcre:register-groups-bind (nil primitive-type) 
+               ("(set|vector)\\[(.*?)\\]" type-string)
+             (mapcar (lambda (f) (parse-zeek-type f (string->keyword primitive-type)))
+                     (split-sequence *zeek-set-separator* field))))
+          (t (funcall (ax:assoc-value *zeek-primitive-type-parsers* type) field)))))
+
+(defun unparse-zeek-type (field type)
+  (let ((type-string (keyword->string type)))
+    (cond ((stringp field)
+           field)
+          ((or (str:starts-with? "set" type-string)
+               (str:starts-with? "vector" type-string))
+           (cl-ppcre:register-groups-bind (nil primitive-type) 
+               ("(set|vector)\\[(.*?)\\]" type-string)
+             (str:join *zeek-set-separator*
+                       (map 'list (lambda (f) (unparse-zeek-type f (string->keyword primitive-type)))
+                            field))))
+          (t (funcall (ax:assoc-value *zeek-stringify* type) field)))))
+
+(defun jsonify-zeek-type (field type)
+  (let ((type-string (keyword->string type)))
+    (cond ((stringp field)
+           field)
+          ((or (str:starts-with? "set" type-string)
+               (str:starts-with? "vector" type-string))
+           (cl-ppcre:register-groups-bind (nil primitive-type) 
+               ("(set|vector)\\[(.*?)\\]" type-string)
+             (map 'vector (lambda (f) (jsonify-zeek-type f (string->keyword primitive-type)))
+                  field)))
+          (t (ax:if-let ((func (ax:assoc-value *zeek-jsonify* type)))
+               (funcall func field)
+               field)))))
+
+(defun jsonify-zeek-map (zeek-map)
+  (loop for field being the hash-key of zeek-map
+        do (ax:when-let ((type (ax:assoc-value *field->type* field)))
+             (setf (gethash field zeek-map) (jsonify-zeek-type (gethash field zeek-map) type))))
+  zeek-map)
+
+(defun stringify-json-type-to-zeek-string (field type)
+  (etypecase field
+    (simple-vector (if (zerop (length field)) *zeek-empty-field* (format nil "~{~a~^,~}" (coerce field 'list))))
+    (boolean (if field "T" "F"))
+    (string field)
+    (t (if (eq type :time) (format nil "~10,6f" field) (jzon:stringify field)))))
