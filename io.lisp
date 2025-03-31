@@ -195,14 +195,16 @@
       (error "FIELDS and MAP are both empty so FIELDS cannot be populated."))
     (setf (zeek-fields zeek-log) (ax:hash-table-keys (zeek-map zeek-log)))))
 
-(defun generate-zeek-header (field-names types)
-  (let ((field-names (mapcar #'str:downcase (mapcar #'string field-names))))
+(defun generate-zeek-header (zeek-log)
+  (let ((path (or (str:downcase (string (zeek-path zeek-log))) "cleek_path"))
+        (types (zeek-types zeek-log))
+        (field-names (mapcar #'str:downcase (mapcar #'string (zeek-fields zeek-log)))))
     (format nil "~a~%~a~%~a~%~a~%~a~%~a~%~a~%~a~%"
             (format nil "#separator \\x~2,'0x" (char-code *zeek-field-separator*))
             (format nil (format nil "#set_separator~a~~a" *zeek-field-separator*) *zeek-set-separator*)
             (format nil (format nil "#empty_field~a~~a" *zeek-field-separator*) *zeek-empty-field*)
             (format nil (format nil "#unset_field~a~~a" *zeek-field-separator*) "-")
-            (format nil (format nil "#path~a~~a" *zeek-field-separator*) "cleek_path") ; TODO
+            (format nil (format nil "#path~a~~a" *zeek-field-separator*) path)
             (format nil (format nil "#open~a~~a" *zeek-field-separator*)
                     (timestamp-to-zeek-open-close-string (local-time:now)))
             (format nil (format nil "#fields~a~~a" *zeek-field-separator*)
@@ -219,7 +221,7 @@
       (format stream "~{~a~^~%~}~%" header)
       (progn (ensure-map zeek-log)
              (ensure-fields zeek-log)
-             (format stream "~a" (generate-zeek-header (zeek-fields zeek-log) (zeek-types zeek-log)))))))
+             (format stream "~a" (generate-zeek-header zeek-log))))))
 
 ;; TODO: handle set/vector types appropriately.
 ;;
