@@ -3,9 +3,9 @@
 #empty_field	(empty)
 #unset_field	-
 #path	ssh
-#open	2024-11-05-16-39-07
+#open	2025-04-01-09-50-28
 #fields	ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	version	auth_success	auth_attempts	direction	client	server	cipher_alg	mac_alg	compression_alg	kex_alg	host_key_alg	host_key
 #types	time	string	addr	port	addr	port	count	bool	count	enum	string	string	string	string	string	string	string	string
-1623187704.078114	CAs7q136wtXBYEspDf	140.249.20.119	48610	192.168.1.145	22	2	-	0	INBOUND	SSH-2.0-libssh-0.6.3	SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2	aes256-ctr	hmac-sha1	none	curve25519-sha256@libssh.org	ecdsa-sha2-nistp256	a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
-1623187704.078275	C06xPj4U5Nao0R3505	140.249.20.119	48610	71.127.52.28	22	2	-	0	-	SSH-2.0-libssh-0.6.3	SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2	aes256-ctr	hmac-sha1	none	curve25519-sha256@libssh.org	ecdsa-sha2-nistp256	a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
-#close	2024-11-05-16-39-07
+1623187704.078114	C4KEFY1wBmfzxmr0T9	140.249.20.119	48610	192.168.1.145	22	2	-	0	INBOUND	SSH-2.0-libssh-0.6.3	SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2	aes256-ctr	hmac-sha1	none	curve25519-sha256@libssh.org	ecdsa-sha2-nistp256	a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+1623187704.078275	ClzWtFaN2gWsP5wNb	140.249.20.119	48610	71.127.52.28	22	2	-	0	-	SSH-2.0-libssh-0.6.3	SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2	aes256-ctr	hmac-sha1	none	curve25519-sha256@libssh.org	ecdsa-sha2-nistp256	a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+#close	2025-04-01-09-50-28

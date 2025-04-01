@@ -149,36 +149,41 @@
     (ip= x y))
   (:method ((x double-float) (y double-float))
     (<= (abs (- x y)) 0.001))
+  ;; This doesn't take into account that Zeek does not mandate an order for set[*] types, except for conn.log as of
+  ;; 7.2.0-dev.194.
   (:method ((x simple-vector) (y simple-vector))
-    (if (and (zerop (length x)) (zerop (length y)))
-        t
-        (and (= (length x) (length y))
-             (equal (aref x 0) (aref y 0))
-             (field= (subseq x 1) (subseq y 1)))))
+    (every #'field= x y))
   (:method ((x t) (y t))
     (equal x y)))
 
-(defun zeek-log= (path1 path2)
+;; client_scid in zeek log is "(empty)" but "" in json log
+(defun zeek-log= (path1 path2 &optional ignore-columns)
   (labels ((fields-equal (zl1 zl2 &optional ignore-columns)
              (loop for field in (cleek::zeek-fields zl1)
                    for type in (cleek::zeek-types zl1)
-                   do (format t "~a = ~a ? " (gethash field (cleek::zeek-map zl1) 'cl::null) (gethash field (cleek::zeek-map zl2) 'cl::null))
-                   always (prin1 (or (member field ignore-columns)
-                                     (field= (gethash field (cleek::zeek-map zl1) 'cl::null)
-                                             (gethash field (cleek::zeek-map zl2) 'cl::null))))
-                   do (terpri))))
+                   ;;do (format t "~a = ~a ? " (gethash field (cleek::zeek-map zl1) 'cl::null) (gethash field (cleek::zeek-map zl2) 'cl::null))
+                   always (or (member field ignore-columns)
+                              (let ((foo (field= (gethash field (cleek::zeek-map zl1) 'cl::null)
+                                                 (gethash field (cleek::zeek-map zl2) 'cl::null))))
+                                (unless foo (format t "~a vs. ~a~%~a = ~a ? FALSE~%" path1 path2 (gethash field (cleek::zeek-map zl1) 'cl::null) (gethash field (cleek::zeek-map zl2) 'cl::null)))
+                                foo))
+                   ;;do (terpri)
+                   )))
     (cleek::with-zeek-log (zl1 path1)
       (cleek::with-zeek-log (zl2 path2)
         (and (= (count-rows path1) (count-rows path2))
              (equal (cleek::zeek-fields zl1) (cleek::zeek-fields zl2))
              (loop while (and (cleek::zeek-line zl1) (cleek::zeek-line zl2))
                    do (cleek::ensure-zeek-map zl1) (cleek::ensure-zeek-map zl2)
-                   always (fields-equal zl1 zl2 '(:uid))
+                   always (fields-equal zl1 zl2 ignore-columns)
                    do (cleek::next-record zl1) (cleek::next-record zl2)))))))
 
-;; TODO: write a proper diff function that:
-;; * ignores UIDs
-;; * does a fuzzier equality for floats
+(test zeek-log=
+  (loop for zeek in (uiop:directory-files (merge-pathnames "zeek/" *test-inputs-dir*))
+        for json in (uiop:directory-files (merge-pathnames "json/" *test-inputs-dir*))
+        do (is (zeek-log= zeek zeek))
+           (is (zeek-log= json json))
+           (is (zeek-log= zeek json))))
 
 (test filters
   (enable-ip-syntax)           ; needed to add this or the #I()s were failing...

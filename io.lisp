@@ -20,6 +20,7 @@
                       :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8)))
   (map (make-hash-table) :type hash-table)
   (format :zeek :type keyword)          ; :zeek :json
+  ;; track row num?
   )
 
 (defun infer-format (stream)

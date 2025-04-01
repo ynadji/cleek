@@ -3,9 +3,9 @@
 #empty_field	(empty)
 #unset_field	-
 #path	analyzer
-#open	2024-11-05-16-39-07
+#open	2025-04-01-09-50-28
 #fields	ts	cause	analyzer_kind	analyzer_name	uid	fuid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	failure_reason	failure_data
 #types	time	string	string	string	string	string	addr	port	addr	port	string	string
-1623187719.075952	violation	packet	TEREDO	C8u3ng3InezH0MhVld	-	68.183.149.15	60014	192.168.1.50	61846	Truncated Teredo or invalid inner IP version	\x00\x00\x00\x00\x00\x00e_h\xd61\xc6\xc6\xee6[d|_\x81\xcfX\xfej\xb3/\xac\x9e\x0f}\xf3r\x83q8\xcf.k\x03\x90
-1623187719.076102	violation	packet	TEREDO	C2T0Ym463GRwRgNUCa	-	68.183.149.15	60014	71.127.52.28	61846	Truncated Teredo or invalid inner IP version	\x00\x00\x00\x00\x00\x00e_h\xd61\xc6\xc6\xee6[d|_\x81\xcfX\xfej\xb3/\xac\x9e\x0f}\xf3r\x83q8\xcf.k\x03\x90
-#close	2024-11-05-16-39-07
+1623187719.075952	violation	packet	TEREDO	C3v1pe3HptPUX8PTZ3	-	68.183.149.15	60014	192.168.1.50	61846	Truncated Teredo or invalid inner IP version	\x00\x00\x00\x00\x00\x00e_h\xd61\xc6\xc6\xee6[d|_\x81\xcfX\xfej\xb3/\xac\x9e\x0f}\xf3r\x83q8\xcf.k\x03\x90
+1623187719.076102	violation	packet	TEREDO	C8uQTa3Cbrp7W3vLCa	-	68.183.149.15	60014	71.127.52.28	61846	Truncated Teredo or invalid inner IP version	\x00\x00\x00\x00\x00\x00e_h\xd61\xc6\xc6\xee6[d|_\x81\xcfX\xfej\xb3/\xac\x9e\x0f}\xf3r\x83q8\xcf.k\x03\x90
+#close	2025-04-01-09-50-28
