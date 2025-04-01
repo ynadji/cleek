@@ -127,8 +127,8 @@
                (str:starts-with? "vector" type-string))
            (cl-ppcre:register-groups-bind (nil primitive-type) 
                ("(set|vector)\\[(.*?)\\]" type-string)
-             (mapcar (lambda (f) (parse-zeek-type f (string->keyword primitive-type)))
-                     (split-sequence *zeek-set-separator* field))))
+             (map 'vector (lambda (f) (parse-zeek-type f (string->keyword primitive-type)))
+                  (split-sequence *zeek-set-separator* field))))
           (t (funcall (ax:assoc-value *zeek-primitive-type-parsers* type) field)))))
 
 (defun unparse-zeek-type (field type)

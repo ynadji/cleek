@@ -60,8 +60,8 @@
   (is (every #'ip= #I("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :vector[subnet])))
   (is (every #'ip= #I("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :set[subnet])))
 
-  (is (equalp '(1 217 41) (parse-zeek-type "1,217,41" :vector[count])))
-  (is (equalp '("google.com" "foo.bar" "bing.bong") (parse-zeek-type "google.com,foo.bar,bing.bong" :set[string]))))
+  (is (every #'= #(1 217 41) (parse-zeek-type "1,217,41" :vector[count])))
+  (is (every #'string= #("google.com" "foo.bar" "bing.bong") (parse-zeek-type "google.com,foo.bar,bing.bong" :set[string]))))
 
 (test unparse-zeek-type
   (is (string= "T" (unparse-zeek-type (parse-zeek-type "T" :bool) :bool)))
