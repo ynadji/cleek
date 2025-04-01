@@ -9,7 +9,7 @@
   :description "DNS manipulation library"
   :author "Yacin Nadji <yacin@defmacro.cc>"
   :license "MIT"
-  :depends-on ("str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns" "com.inuoe.jzon" "local-time" "transducers" "clingon" "serapeum" "split-sequence" "cl-interpol")
+  :depends-on ("str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns" "com.inuoe.jzon" "local-time" "clingon" "serapeum" "split-sequence" "cl-interpol")
   :components ((:file "packages")
                (:file "types")
                (:file "io")

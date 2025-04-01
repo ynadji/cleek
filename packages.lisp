@@ -4,7 +4,6 @@
                     (:na :netaddr)
                     (:dns :cl-dns)
                     (:tld :cl-tld)
-                    (:jzon :com.inuoe.jzon)
-                    (:t :transducers))
+                    (:jzon :com.inuoe.jzon))
   (:import-from :split-sequence #:split-sequence)
   (:export :main))
