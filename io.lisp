@@ -189,6 +189,14 @@
       (setf (zeek-map zeek-log) (jzon:parse (zeek-line zeek-log) :key-fn #'string->keyword)
             (zeek-status zeek-log) :jzon-map)))))
 
+(defun ensure-zeek-map (zeek-log)
+  (when (member (zeek-status zeek-log) '(:unparsed :row-strings))
+    (ensure-map zeek-log))
+  (when (and (eq (zeek-format zeek-log) :json)
+             (eq (zeek-status zeek-log) :jzon-map))
+    (prog1 (zeekify-json-map (zeek-map zeek-log))
+      (setf (zeek-status zeek-log) :zeek-map))))
+
 (defun ensure-fields (zeek-log)
   (unless (zeek-fields zeek-log)
     (when (zerop (hash-table-count (zeek-map zeek-log)))

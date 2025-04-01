@@ -37,7 +37,10 @@
 (test parse-zeek-type
   (is (parse-zeek-type "T" :bool))
   (is (not (parse-zeek-type "F" :bool)))
-  (is (string= "-" (parse-zeek-type "-" :bool)))
+
+  (is (eq 'cl::null (parse-zeek-type "-" :bool)))
+  (is (eq 'cl::null (parse-zeek-type "-" :string)))
+  (is (eq 'cl::null (parse-zeek-type "-" :count)))
 
   (is (= 1 (parse-zeek-type "1" :count)))
 
@@ -66,7 +69,10 @@
 (test unparse-zeek-type
   (is (string= "T" (unparse-zeek-type (parse-zeek-type "T" :bool) :bool)))
   (is (string= "F" (unparse-zeek-type (parse-zeek-type "F" :bool) :bool)))
+
   (is (string= "-" (unparse-zeek-type (parse-zeek-type "-" :bool) :bool)))
+  (is (string= "-" (unparse-zeek-type (parse-zeek-type "-" :count) :count)))
+  (is (string= "-" (unparse-zeek-type (parse-zeek-type "-" :addr) :addr)))
 
   (is (string= "1" (unparse-zeek-type (parse-zeek-type "1" :count) :count)))
 
@@ -135,6 +141,44 @@
     (loop for line = (read-line in nil)
           while line
           count (char/= #\# (char line 0)))))
+
+(defgeneric field= (x y)
+  (:method ((x local-time:timestamp) (y local-time:timestamp))
+    (< (abs (local-time:timestamp-difference x y)) 1))
+  (:method ((x netaddr::ip+) (y netaddr::ip+))
+    (ip= x y))
+  (:method ((x double-float) (y double-float))
+    (<= (abs (- x y)) 0.001))
+  (:method ((x simple-vector) (y simple-vector))
+    (if (and (zerop (length x)) (zerop (length y)))
+        t
+        (and (= (length x) (length y))
+             (equal (aref x 0) (aref y 0))
+             (field= (subseq x 1) (subseq y 1)))))
+  (:method ((x t) (y t))
+    (equal x y)))
+
+(defun zeek-log= (path1 path2)
+  (labels ((fields-equal (zl1 zl2 &optional ignore-columns)
+             (loop for field in (cleek::zeek-fields zl1)
+                   for type in (cleek::zeek-types zl1)
+                   do (format t "~a = ~a ? " (gethash field (cleek::zeek-map zl1) 'cl::null) (gethash field (cleek::zeek-map zl2) 'cl::null))
+                   always (prin1 (or (member field ignore-columns)
+                                     (field= (gethash field (cleek::zeek-map zl1) 'cl::null)
+                                             (gethash field (cleek::zeek-map zl2) 'cl::null))))
+                   do (terpri))))
+    (cleek::with-zeek-log (zl1 path1)
+      (cleek::with-zeek-log (zl2 path2)
+        (and (= (count-rows path1) (count-rows path2))
+             (equal (cleek::zeek-fields zl1) (cleek::zeek-fields zl2))
+             (loop while (and (cleek::zeek-line zl1) (cleek::zeek-line zl2))
+                   do (cleek::ensure-zeek-map zl1) (cleek::ensure-zeek-map zl2)
+                   always (fields-equal zl1 zl2 '(:uid))
+                   do (cleek::next-record zl1) (cleek::next-record zl2)))))))
+
+;; TODO: write a proper diff function that:
+;; * ignores UIDs
+;; * does a fuzzier equality for floats
 
 (test filters
   (enable-ip-syntax)           ; needed to add this or the #I()s were failing...

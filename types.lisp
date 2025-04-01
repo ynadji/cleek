@@ -29,6 +29,10 @@
   (destructuring-bind (secs nsecs) (mapcar #'parse-integer (split-sequence #\. s))
     (local-time:unix-to-timestamp secs :nsec nsecs)))
 
+(defun double-to-timestamp (x)
+  (multiple-value-bind (secs nsecs) (truncate x)
+    (local-time:unix-to-timestamp secs :nsec (* (expt 10 6) (truncate nsecs)))))
+
 ;; type conversions between zeek, JSON, and lisp.
 (defparameter *zeek-primitive-type-parsers*
   `((:bool . ,(lambda (x) (if (string= "T" x) t nil)))
@@ -37,11 +41,11 @@
     (:double . ,#'read-from-string)
     (:time . ,#'zeek-ts-string-to-timestamp)
     (:interval . ,#'read-from-string)
-    (:string . ,#'identity) ; or #'string maybe?
+    (:string . ,#'identity)             ; or #'string maybe?
     (:port . ,#'parse-integer)
     (:addr . ,#'na:make-ip-address)
     (:subnet . ,#'na:make-ip-network)
-    (:enum . ,#'identity) ; just keep it as a string i suppose
+    (:enum . ,#'identity)               ; just keep it as a string i suppose
     ))
 
 (defparameter *zeek-jsonify*
@@ -49,6 +53,12 @@
     (:time . ,#'timestamp-to-zeek-ts)
     (:addr . ,(lambda (x) (str:downcase (na:str x))))
     (:subnet . ,(lambda (x) (str:downcase (na:str x))))))
+
+(defparameter *json-zeekify*
+  `((:bool . ,(lambda (x) (string= x "T")))
+    (:time . ,#'double-to-timestamp)
+    (:addr . ,(lambda (x) #I(x)))
+    (:subnet . ,(lambda (x) #I(x)))))
 
 (defparameter *zeek-stringify*
   `((:bool . ,(lambda (x) (if x "T" "F")))
@@ -120,9 +130,8 @@
 (defun parse-zeek-type (field type)
   (let ((type-string (keyword->string type)))
     ;; unset should probably be 'null and empty should probably be #() (since '() is eq to nil)
-    (cond ((or (string= field (string *zeek-unset-field*))
-               (string= field (string *zeek-empty-field*)))
-           field)
+    (cond ((string= field (string *zeek-unset-field*)) 'cl::null)
+          ((string= field (string *zeek-empty-field*)) #())
           ((or (str:starts-with? "set" type-string)
                (str:starts-with? "vector" type-string))
            (cl-ppcre:register-groups-bind (nil primitive-type) 
@@ -133,7 +142,8 @@
 
 (defun unparse-zeek-type (field type)
   (let ((type-string (keyword->string type)))
-    (cond ((stringp field)
+    (cond ((eq 'cl:null field) "-")
+          ((stringp field)
            field)
           ((or (str:starts-with? "set" type-string)
                (str:starts-with? "vector" type-string))
@@ -163,6 +173,23 @@
         do (ax:when-let ((type (ax:assoc-value *field->type* field)))
              (setf (gethash field zeek-map) (jsonify-zeek-type (gethash field zeek-map) type))))
   zeek-map)
+
+(defun zeekify-json-type (field type)
+  (let ((type-string (keyword->string type)))
+    (cond ((or (str:starts-with? "set" type-string)
+               (str:starts-with? "vector" type-string))
+           (cl-ppcre:register-groups-bind (nil primitive-type) 
+               ("(set|vector)\\[(.*?)\\]" type-string)
+             (map 'vector (lambda (f) (zeekify-json-type f (string->keyword primitive-type)))
+                  field)))
+          (t (ax:if-let ((func (ax:assoc-value *json-zeekify* type)))
+               (funcall func field)
+               field)))))
+
+(defun zeekify-json-map (json-map)
+  (loop for field being the hash-key of json-map
+        do (ax:when-let ((type (ax:assoc-value *field->type* field)))
+             (setf (gethash field json-map) (zeekify-json-type (gethash field json-map) type)))))
 
 (defun stringify-json-type-to-zeek-string (field type)
   (etypecase field
