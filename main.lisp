@@ -142,17 +142,6 @@
         (t (cons (update-columns (car form))
                  (update-columns (cdr form))))))
 
-;; TODO: how do i compile #I("1.2.3.4") into a constant based on what
-;; its expansion (NA::MAKE-IP-LIKE "1.2.3.4") becomes so i don't run it
-;; every time the lambda is called?
-;;
-;; i think i actually need to make NETADDR evaluate this at read time
-;; instead. oh, but then it wouldn't work for variables. hmm.
-;;
-;; lol, actually you can just use #.#I("1.2.3.4") and it does what you
-;; want :).
-;;
-;; TODO: Maybe worth experimenting with caching the filter function?
 (defun compile-runtime-filters (s)
   (let* ((raw-filters (with-input-from-string (in s)
                         (macroexpand-1 (read in nil))))
@@ -166,7 +155,8 @@
             columns
             filters)))
 
-;; SETF is a macro that 
+;; SETF is a macro that needs to be expanded _after_ we update the columns, otherwise it won't use the SETF function for
+;; GET-VALUE.
 (defun compile-runtime-mutators (s)
   (when s
     (let* ((raw-mutators (with-input-from-string (in s)
