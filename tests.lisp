@@ -212,3 +212,35 @@
                                                  (plusp @resp_bytes)))" conn-log-json)
     (is (= 7 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)))
+
+(test mutators
+  (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory)))
+        (dns-log (merge-pathnames "zeek/dns.log" *test-inputs-dir*))
+        (dns-log-json (merge-pathnames "json/dns.log" *test-inputs-dir*))
+        (conn-log (merge-pathnames "zeek/conn.log" *test-inputs-dir*))
+        (conn-log-json (merge-pathnames "json/conn.log" *test-inputs-dir*)))
+
+    (is (= 25 (count-rows dns-log) (count-rows dns-log-json)))
+    (is (= 481 (count-rows conn-log) (count-rows conn-log-json)))
+
+    ;; TODO: Add :zeek format when implemented.
+    (cat-logs-string test-output :json "(setf @e2ld (cl-tld:get-domain-suffix @query)
+                                              @tld (cl-tld:get-tld @query))" "(string= @tld \"com\")" dns-log-json)
+    (is (= 15 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+    (cat-logs-string test-output :json "(setf @e2ld (cl-tld:get-domain-suffix @query)
+                                              @tld (cl-tld:get-tld @query))" "(string= @tld \"local\")" dns-log-json)
+    (is (= 6 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :json "(setf @total_bytes (+ (or @orig_bytes 0)
+                                                              (or @resp_bytes 0)))"
+                     "(and (= 1 @total_bytes) (string= @proto \"tcp\"))" conn-log-json)
+    (is (= 46 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :json "(setf @total_bytes (+ (or @orig_bytes 0)
+                                                              (or @resp_bytes 0)))"
+                     "(and (plusp @total_bytes) (string= @proto \"tcp\"))" conn-log-json)
+    (is (= 224 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)))
