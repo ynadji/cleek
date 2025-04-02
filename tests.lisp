@@ -114,33 +114,6 @@
 
 (defvar *test-inputs-dir* (asdf:system-relative-pathname "cleek" "data/test-input/"))
 (defvar *baselines-dir* (asdf:system-relative-pathname "cleek" "data/baselines/"))
-(defvar *diff-script* (asdf:system-relative-pathname "cleek" "scripts/diff.sh"))
-
-(test cat
-  ;; TODO: make sure you're testing against the output format's input file.
-  ;; UIDs are different too. as are the paths, timestamps, open/close times.
-  (loop for input-format in '("zeek" "json")
-        for tmp-dir = (uiop:temporary-directory) do
-          (loop for output-format in (list input-format) do ;in '("zeek" "json") do
-            (loop for input-path in (uiop:directory-files (merge-pathnames #?"${input-format}/" *test-inputs-dir*))
-                  for basename = (pathname-name input-path)
-                  for output-path = (merge-pathnames basename tmp-dir)
-                  do ;;(format t "(cat-logs-string ~a ~a ~a ~a)~%" output-path (string->keyword output-format) "t" input-path)
-                     (cat-logs-string output-path (string->keyword output-format) nil "t" input-path)
-                     (multiple-value-bind (stdout stderr exit-code)
-                         (uiop:run-program (format nil "~a ~a ~a"
-                                                   *diff-script* input-path output-path)
-                                           :ignore-error-status t)
-                       (declare (ignorable stdout stderr))
-                       (is (zerop exit-code)
-                           "~%Input: ~a~&Input Format: ~a~&Output Format: ~a~&Exit code: ~a~%~%Diff: ~a"
-                           input-path input-format output-format exit-code stdout))))))
-
-(defun count-rows (log-path)
-  (with-open-file (in log-path)
-    (loop for line = (read-line in nil)
-          while line
-          count (char/= #\# (char line 0)))))
 
 (defgeneric field= (x y)
   (:method ((x local-time:timestamp) (y local-time:timestamp))
@@ -177,6 +150,25 @@
                    do (cleek::ensure-zeek-map zl1) (cleek::ensure-zeek-map zl2)
                    always (fields-equal zl1 zl2 ignore-columns)
                    do (cleek::next-record zl1) (cleek::next-record zl2)))))))
+
+(test cat
+  ;; TODO: make sure you're testing against the output format's input file.
+  ;; UIDs are different too. as are the paths, timestamps, open/close times.
+  (loop for input-format in '("zeek" "json")
+        for tmp-dir = (uiop:temporary-directory) do
+          (loop for output-format in (list input-format) do ;;'("zeek" "json") do
+            (loop for input-path in (uiop:directory-files (merge-pathnames #?"${input-format}/" *test-inputs-dir*))
+                  for basename = (pathname-name input-path)
+                  for output-path = (merge-pathnames basename tmp-dir)
+                  do ;;(format t "(cat-logs-string ~a ~a ~a ~a)~%" output-path (string->keyword output-format) "t" input-path)
+                     (cat-logs-string output-path (string->keyword output-format) nil "t" input-path)
+                     (is (zeek-log= input-path output-path))))))
+
+(defun count-rows (log-path)
+  (with-open-file (in log-path)
+    (loop for line = (read-line in nil)
+          while line
+          count (char/= #\# (char line 0)))))
 
 (test zeek-log=
   (loop for zeek in (uiop:directory-files (merge-pathnames "zeek/" *test-inputs-dir*))
