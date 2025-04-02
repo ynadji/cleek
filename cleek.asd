@@ -13,7 +13,7 @@
   :components ((:file "packages")
                (:file "types")
                (:file "io")
-               (:file "filters")
+               (:file "helpers")
                (:file "main"))
   :build-operation "program-op"
   :build-pathname "bin/cleek"
