@@ -193,7 +193,12 @@
 (defun jsonify-zeek-map (zeek-map)
   (loop for field being the hash-key of zeek-map
         do (ax:when-let ((type (ax:assoc-value *field->type* field)))
-             (setf (gethash field zeek-map) (jsonify-zeek-type (gethash field zeek-map) type))))
+             ;; Zeek format uses "-" to indicate unset while JSON simply has the key not present in the output. We use
+             ;; CL:NULL in Zeek formatted logs to differentiate this from the string "-", so we remove these from the
+             ;; map when JSONifying a :ZEEK-MAP typed ZEEK-MAP.
+             (if (eq 'cl:null (gethash field zeek-map))
+                 (remhash field zeek-map)
+                 (setf (gethash field zeek-map) (jsonify-zeek-type (gethash field zeek-map) type)))))
   zeek-map)
 
 (defun zeekify-json-type (field type)

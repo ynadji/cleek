@@ -151,17 +151,14 @@
                    always (fields-equal zl1 zl2 ignore-columns)
                    do (cleek::next-record zl1) (cleek::next-record zl2)))))))
 
-(test cat
-  ;; TODO: make sure you're testing against the output format's input file.
-  ;; UIDs are different too. as are the paths, timestamps, open/close times.
+(test cat-and-format-conversion
   (loop for input-format in '("zeek" "json")
         for tmp-dir = (uiop:temporary-directory) do
-          (loop for output-format in (list input-format) do ;;'("zeek" "json") do
+          (loop for output-format in '("zeek" "json") do
             (loop for input-path in (uiop:directory-files (merge-pathnames #?"${input-format}/" *test-inputs-dir*))
                   for basename = (pathname-name input-path)
                   for output-path = (merge-pathnames basename tmp-dir)
-                  do ;;(format t "(cat-logs-string ~a ~a ~a ~a)~%" output-path (string->keyword output-format) "t" input-path)
-                     (cat-logs-string output-path (string->keyword output-format) nil "t" input-path)
+                  do (cat-logs-string output-path (string->keyword output-format) nil "t" input-path)
                      (is (zeek-log= input-path output-path))))))
 
 (defun count-rows (log-path)

@@ -211,12 +211,6 @@
              (ensure-fields zeek-log)
              (format stream "~a" (generate-zeek-header zeek-log))))))
 
-;; TODO: handle set/vector types appropriately.
-;;
-;; with modified you have a handful of cases now:
-;; zeek->zeek, only modifying existing fields vs. adding
-;;   * i guess with this you can just store the other fields in the map?
-;; basically everything else requires creating the map, no?
 (defun write-zeek-log-line (zeek-log stream format)
   (let ((same-format? (eq format (zeek-format zeek-log))))
     (cond ((and (not (zeek-modified? zeek-log)) same-format?)
