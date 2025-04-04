@@ -40,6 +40,7 @@
 ;;; would load the ips/nets in "filename" and check against contains? you'd want to #. on it so it gets evaluated
 ;;; immediately and stored as the #<IP-SET> object (or LIST or w/e it is).
 
+;; TODO: Should these return 'CL:NULL if they fail instead of NIL?
 (defun e2ld (domain)
   (ignore-errors (cl-tld:get-domain-suffix domain)))
 

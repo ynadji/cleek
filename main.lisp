@@ -118,20 +118,6 @@
   (when (column? symbol)
     (intern (subseq (symbol-name symbol) 1) :keyword)))
 
-;; TODO: terse regex func? e.g., (~ :o_h "^[0-4]\.") or something?
-;; if you _just_ do this for string stuff, you'll know anything that uses it
-;; needs to have strings. otherwise fully parse. but uhh what about mixed?
-;; or (or (~ :o_p "443") (> :o_p 443))? do i need two arrays with strings
-;; and fully parsed versions? i guess you could just define a list of funcs
-;; and stick with those? what if you want to use something else?
-;; TODO: save common filters to a file, show in --help output or something?
-;;
-;; so using keywords prevents me from using functions with keyword arguments :|. what if i do:
-;;
-;; @field to get the string, and
-;; p@field to get the fully parsed field?
-;;
-;; still need to think about the JSON stuff cuz that's messy.
 (defun update-columns (form)
   ;; (eq form 'line) didn't work and i don't know why...
   (cond ((and (symbolp form)
@@ -155,20 +141,34 @@
             columns
             filters)))
 
+(defun update-setters (form)
+  (flet ((setter? (fun)
+           (and (symbolp fun) (str:ends-with? "!" (symbol-name fun))))
+         (fun-name-from-setter (setter)
+           (let ((s (symbol-name setter)))
+             (intern (str:substring 0 (1- (length s)) s)))))
+    (cond ((and (consp form) (setter? (car form)))
+           `(setf ,(cadr form) (,(fun-name-from-setter (car form)) ,(cadr form))))
+          ((atom form) form)
+          (t (cons (update-setters (car form))
+                   (update-setters (cdr form)))))))
+
 ;; SETF is a macro that needs to be expanded _after_ we update the columns, otherwise it won't use the SETF function for
 ;; GET-VALUE.
-;; TODO: allow suffixing normal functions with ! to automatically expand to a SETF form, i.e.,
-;; (anonip! @o_h) -> (setf @o_h (anonip @o_h)) -> (setf (get-value log @id.orig_h) (anonip (get-value log @id.orig_h)))
-;; probably need to use MACROEXPAND instead of MACROEXPAND-1?
 (defun compile-runtime-mutators (s)
   (when s
-    (let* ((raw-mutators (with-input-from-string (in s)
-                           (read in nil)))
-           (mutators (update-columns raw-mutators))
-           (columns (mapcar #'or-nickname (mapcar #'column->keyword (remove-if-not #'column? (ax:flatten raw-mutators))))))
-      (values (compile nil `(lambda (log) (declare (ignorable log)) ,(macroexpand-1 mutators)))
-              columns
-              mutators))))
+    ;; Read all forms in mutator string and wrap in PROGN.
+    (flet ((read-all-progn (stream)
+             (let ((forms (loop for form = (read stream nil)
+                                while form collect form)))
+               (push 'progn forms))))
+      (let* ((raw-mutators (with-input-from-string (in s)
+                             (read-all-progn in)))
+             (mutators (update-columns (update-setters raw-mutators)))
+             (columns (mapcar #'or-nickname (mapcar #'column->keyword (remove-if-not #'column? (ax:flatten raw-mutators))))))
+        (values (compile nil `(lambda (log) (declare (ignorable log)) ,(macroexpand-1 mutators)))
+                columns
+                mutators)))))
 
 (defun cat/command ()
   (clingon:make-command
