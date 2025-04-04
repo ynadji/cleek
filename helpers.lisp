@@ -46,6 +46,7 @@
 (defun tld (domain)
   (ignore-errors (cl-tld:get-tld domain)))
 
+;; https://stackoverflow.com/questions/42445504/how-do-i-create-sha256-hmac-using-ironclad-in-common-lisp
 (defun hash! (field)
   (declare (ignore field)))
 
@@ -73,13 +74,13 @@
         (setf (slot-value ip 'netaddr:str) (na::ip-int-to-str (na:int ip) version))
         ip)))
 
-  ;; TODO: lazy way: anonymize the whole IP, but still apply the mask which will just 0 out the bytes that don't matter
-  ;; smarter way: only anonymize the bytes that aren't masked.
   (defgeneric anoncidr (cidr)
     (:method ((cidr string))
-      (error "not implemented!"))
+      (na:str (anoncidr (na:make-ip-network cidr))))
     (:method ((cidr na::ip-network))
-      (error "not implemented!"))))
+      (with-slots (na:first-ip na::mask) cidr
+        (let ((first-ip-anon (anonip na:first-ip)))
+          (na:make-ip-network (format nil "~a/~a" (na:str first-ip-anon) na::mask)))))))
 
 ;; is there a reasonable way to anonymize domains?
 
