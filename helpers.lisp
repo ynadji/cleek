@@ -66,7 +66,8 @@
             (str:join "." quads))
           (na:str (anonip (na:make-ip-address ip)))))
     (:method ((ip na::ip-address))
-      (let ((version (na:version ip)))
+      (let ((version (na:version ip))
+            (ip (na:make-ip-address (na:int ip))))
         (loop for offset from (if (= version 4) 24 120) downto 0 by 8
               for permutor in (if (= version 4) v4-permutors v6-permutors)
               do (setf (ldb (byte 8 offset) (slot-value ip 'netaddr::int))
