@@ -157,6 +157,9 @@
 
 ;; SETF is a macro that needs to be expanded _after_ we update the columns, otherwise it won't use the SETF function for
 ;; GET-VALUE.
+;; TODO: allow suffixing normal functions with ! to automatically expand to a SETF form, i.e.,
+;; (anonip! @o_h) -> (setf @o_h (anonip @o_h)) -> (setf (get-value log @id.orig_h) (anonip (get-value log @id.orig_h)))
+;; probably need to use MACROEXPAND instead of MACROEXPAND-1?
 (defun compile-runtime-mutators (s)
   (when s
     (let* ((raw-mutators (with-input-from-string (in s)

@@ -49,9 +49,39 @@
 (defun hash! (field)
   (declare (ignore field)))
 
-;; copy permutation algo from python code
-(defun anonip! (ip)
-  (declare (ignore ip)))
+(let* ((v6-permutors (loop repeat 16 collect (ax:shuffle (coerce (loop for x upto 255 collect x) 'vector))))
+       (v4-permutors (nthcdr 12 v6-permutors))
+       (v4-string-permutors (loop for p in v4-permutors collect (map 'vector #'write-to-string p))))
+  ;; TODO: IP-ADDRESS operation is destructive but STRING one is not. Hmm.
+  (defgeneric anonip (ip)
+    (:documentation "Anonymize an IP address by permuting each byte with a fixed set of permutations for each byte.")
+    (:method ((ip string))
+      (if (na::ipv4-str? ip)
+          (let ((quads (split-sequence #\. ip)))
+            (setf (first quads) (aref (first v4-string-permutors) (parse-integer (first quads)))
+                  (second quads) (aref (second v4-string-permutors) (parse-integer (second quads)))
+                  (third quads) (aref (third v4-string-permutors) (parse-integer (third quads)))
+                  (fourth quads) (aref (fourth v4-string-permutors) (parse-integer (fourth quads))))
+            (str:join "." quads))
+          (na:str (anonip (na:make-ip-address ip)))))
+    (:method ((ip na::ip-address))
+      (let ((version (na:version ip)))
+        (loop for offset from (if (= version 4) 24 120) downto 0 by 8
+              for permutor in (if (= version 4) v4-permutors v6-permutors)
+              do (setf (ldb (byte 8 offset) (slot-value ip 'netaddr::int))
+                       (aref permutor (ldb (byte 8 offset) (slot-value ip 'netaddr::int)))))
+        (setf (slot-value ip 'netaddr:str) (na::ip-int-to-str (na:int ip) version))
+        ip)))
+
+  ;; TODO: lazy way: anonymize the whole IP, but still apply the mask which will just 0 out the bytes that don't matter
+  ;; smarter way: only anonymize the bytes that aren't masked.
+  (defgeneric anoncidr (cidr)
+    (:method ((cidr string))
+      (error "not implemented!"))
+    (:method ((cidr na::ip-network))
+      (error "not implemented!"))))
+
+;; is there a reasonable way to anonymize domains?
 
 ;; probably need to replace the symbol with a call to (PRODUCTIVE? LOG) in main.
 (defun productive? (zeek-log)
