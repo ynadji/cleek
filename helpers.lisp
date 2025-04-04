@@ -65,7 +65,7 @@
                   (third quads) (aref (third v4-string-permutors) (parse-integer (third quads)))
                   (fourth quads) (aref (fourth v4-string-permutors) (parse-integer (fourth quads))))
             (str:join "." quads))
-          (na:str (anonip (na:make-ip-address ip)))))
+          (str:downcase (na:str (anonip (na:make-ip-address ip))))))
     (:method ((ip na::ip-address))
       (let ((version (na:version ip))
             (ip (na:make-ip-address (na:int ip))))
@@ -78,7 +78,7 @@
 
   (defgeneric anoncidr (cidr)
     (:method ((cidr string))
-      (na:str (anoncidr (na:make-ip-network cidr))))
+      (str:downcase (na:str (anoncidr (na:make-ip-network cidr)))))
     (:method ((cidr na::ip-network))
       (with-slots (na:first-ip na::mask) cidr
         (let ((first-ip-anon (anonip na:first-ip)))
