@@ -47,14 +47,23 @@
 (defun tld (domain)
   (ignore-errors (cl-tld:get-tld domain)))
 
-;; https://stackoverflow.com/questions/42445504/how-do-i-create-sha256-hmac-using-ironclad-in-common-lisp
-(defun hash! (field)
-  (declare (ignore field)))
+(defun sha256-string (string)
+  (let* ((key (ironclad:ascii-string-to-byte-array "valkyrie"))
+         (hmac (ironclad:make-hmac key :sha256)))
+    (ironclad:update-hmac hmac (ironclad:ascii-string-to-byte-array string))
+    (ironclad:byte-array-to-hex-string (ironclad:hmac-digest hmac))))
+
+(defgeneric hash (field)
+  (:method ((field string))
+    (sha256-string field))
+  (:method ((field na::ip-like))
+    (sha256-string (na:str field)))
+  (:method ((field t))
+    (sha256-string (format nil "~a" field))))
 
 (let* ((v6-permutors (loop repeat 16 collect (ax:shuffle (coerce (loop for x upto 255 collect x) 'vector))))
        (v4-permutors (nthcdr 12 v6-permutors))
        (v4-string-permutors (loop for p in v4-permutors collect (map 'vector #'write-to-string p))))
-  ;; TODO: IP-ADDRESS operation is destructive but STRING one is not. Hmm.
   (defgeneric anonip (ip)
     (:documentation "Anonymize an IP address by permuting each byte with a fixed set of permutations for each byte.")
     (:method ((ip string))
