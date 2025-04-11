@@ -5,7 +5,6 @@
 ;; * zeek log adding fields
 ;; * PRODUCTIVE?
 ;; * timestamp filtering maybe t< t> t<= t>=? handle the conversion with generic functions?
-;; * annotations
 ;; * save common filters/mutators to a file and use them on demand
 
 (defun cat/options ()
@@ -148,7 +147,7 @@
            (let ((s (symbol-name setter)))
              (intern (str:substring 0 (1- (length s)) s)))))
     (cond ((and (consp form) (setter? (car form)))
-           `(setf ,(cadr form) (,(fun-name-from-setter (car form)) ,(cadr form))))
+           `(setf ,(cadr form) (,(fun-name-from-setter (car form)) ,@(rest form))))
           ((atom form) form)
           (t (cons (update-setters (car form))
                    (update-setters (cdr form)))))))
@@ -173,7 +172,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.7.0"
+   :version "0.8.0"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler

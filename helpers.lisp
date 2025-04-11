@@ -37,6 +37,13 @@
       (:ip (na:make-ip-set (mapcar #'na::make-ip-like lines)))
       (:dns (apply #'cl-dns:make-trie lines)))))
 
+(defmacro anno (field &rest containers-and-labels)
+  `(cond ,@(loop for (container label) on containers-and-labels by #'cddr
+                 if (eq container t)
+                   collect `(t ,label)
+                 else
+                   collect `((contains? ,container ,field) ,label))))
+
 ;; TODO: Should these return 'CL:NULL if they fail instead of NIL?
 (defun e2ld (domain)
   (ignore-errors (cl-tld:get-domain-suffix domain)))
