@@ -37,6 +37,8 @@
     ;; TODO: these are always "parsed" from jzon
     (:json (gethash field (zeek-map zeek-log)))))
 
+;; TODO: if we are in :ZEEK-MAP territory _or_ we are getting a newly defined column, use the zeek-map for :zeek,
+;; otherwise, use the array.
 (defun get-value (zeek-log field)
   (ecase (zeek-format zeek-log)
     ;; TODO: these are always strings. what about when we want not strings?
@@ -56,15 +58,20 @@
         (setf (zeek-modified? zeek-log) t))))
 
 ;; TODO: Make this work with the condition system
-(defun open-zeek-log (&key filepath stream)
+(defun open-zeek-log (&key filepath stream columns)
   (when (or (and filepath stream) (and (null stream) (null filepath)))
     (error "Specify exactly one of FILEPATH or STREAM"))
   (let ((zeek-log (make-zeek :filepath (or filepath "N/A")
                              :stream (or stream (open filepath)))))
-    (setf (zeek-format zeek-log) (infer-format (zeek-stream zeek-log)))
+    (setf (zeek-format zeek-log) (infer-format (zeek-stream zeek-log))
+          (zeek-accessed-columns zeek-log) columns)
     (ecase (zeek-format zeek-log)
       (:zeek (parse-zeek-header zeek-log))
       (:json (next-record zeek-log) (infer-log-path-fields-types zeek-log)))
+    (when (zeek-accessed-columns zeek-log)
+      (ecase (zeek-format zeek-log)
+        (:zeek (ensure-fields->idx zeek-log) (ensure-row-strings zeek-log))
+        (:json (ensure-map zeek-log))))
     zeek-log))
 
 (defun next-record (zeek-log)
@@ -84,12 +91,20 @@
                   ;; skip empty files that go directly from header to #close.
                   (when (str:starts-with? "#close" (zeek-line zeek-log))
                     (next-record zeek-log)))
+                (when (and (zeek-line zeek-log) (zeek-accessed-columns zeek-log))
+                  (ecase (zeek-format zeek-log)
+                    (:zeek (ensure-row-strings zeek-log))
+                    (:json (ensure-map zeek-log))))
                 zeek-log)
-               (t zeek-log))))
+               (t (when (and (zeek-line zeek-log) (zeek-accessed-columns zeek-log))
+                    (ecase (zeek-format zeek-log)
+                      (:zeek (ensure-row-strings zeek-log))
+                      (:json (ensure-map zeek-log))))
+                  zeek-log))))
 
-(defmacro with-zeek-log ((log filepath) &body body)
+(defmacro with-zeek-log ((log filepath &optional columns) &body body)
   (ax:with-gensyms (abort?)
-    `(let ((,log (open-zeek-log :filepath ,filepath))
+    `(let ((,log (open-zeek-log :filepath ,filepath :columns ,columns))
            (,abort? t))
        (unwind-protect
             (multiple-value-prog1
@@ -203,11 +218,15 @@
                                                          (make-list (length field-names)
                                                                     :initial-element "not implemented")))))))
 
-(defun write-zeek-header (zeek-log stream format)
+(defun write-zeek-header (zeek-log stream format &optional new-columns)
   (when (eq format :zeek)
+    ;; TODO: how do i update the header with the new fields? what about their types? they're basically always strings
+    ;; until they're not. (if (and header (null new-columns))
+    ;; you could just extend the array. it only happens once at the beginning of a file and you're good to go. would
+    ;; only need to worry about parsing multiple files and resolving the column conflict.
     (ax:if-let ((header (zeek-raw-header zeek-log)))
       (format stream "~{~a~^~%~}~%" header)
-      (progn (ensure-map zeek-log)
+      (progn (ensure-map zeek-log) ;; this is probably unnecessary, right?
              (ensure-fields zeek-log)
              (format stream "~a" (generate-zeek-header zeek-log))))))
 
@@ -236,5 +255,7 @@
                                           do (princ field stream)
                                           when (< i (length (zeek-row-strings zeek-log)))
                                             do (princ *zeek-field-separator* stream))
+                       ;; TODO: if there's stuff in ZEEK-MAP, iterate a dump. how do i ensure the order is the same
+                       ;; every time?
                        (terpri stream))))))
           (t (error "Modified & format change not implemented!")))))

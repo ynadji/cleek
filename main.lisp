@@ -42,20 +42,12 @@
           (when (zerop (length input-files))
             (push "/dev/stdin" input-files))
           (loop for in-path in input-files do
-            (with-zeek-log (zeek-log in-path)
+            (with-zeek-log (zeek-log in-path columns)
               (when (eq output-format :input-format)
                 (setf output-format (zeek-format zeek-log)))
               (write-zeek-header zeek-log out output-format)
-              (when columns
-                (ecase (zeek-format zeek-log)
-                  (:zeek (ensure-fields->idx zeek-log) (ensure-row-strings zeek-log))
-                  (:json (ensure-map zeek-log))))
               (loop while (zeek-line zeek-log)
-                    do (when columns
-                         (ecase (zeek-format zeek-log)
-                           (:zeek (ensure-row-strings zeek-log))
-                           (:json (ensure-map zeek-log))))
-                       (when mutator-func
+                    do (when mutator-func
                          (funcall mutator-func zeek-log))
                        (when (funcall filter-func zeek-log)
                          (write-zeek-log-line zeek-log out output-format))
