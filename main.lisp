@@ -21,13 +21,6 @@
                              :items '("zeek" "json" "input-format")
                              :initial-value "input-format"
                              :key :format)
-        (clingon:make-option :choice
-                             :description "Output compression"
-                             :short-name #\c
-                             :long-name "output-compression"
-                             :items '("none" "gzip" "zstd")
-                             :initial-value "none"
-                             :key :compression)
         (clingon:make-option :string
                              :description "Filter expression"
                              :short-name #\x
@@ -93,10 +86,8 @@
   (let ((args (clingon:command-arguments cmd))
         (output-file (clingon:getopt cmd :output))
         (format (string->keyword (clingon:getopt cmd :format)))
-        (compression (string->keyword (clingon:getopt cmd :compression)))
         (filter-expr (clingon:getopt cmd :filter-expr))
         (mutator-expr (clingon:getopt cmd :mutator-expr)))
-    (declare (ignore compression))
     (handler-bind ((error (lambda (condition) (invoke-debugger condition))))
       (apply #'cat-logs-string output-file format mutator-expr filter-expr args))))
 
