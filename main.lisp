@@ -89,7 +89,16 @@
         (filter-expr (clingon:getopt cmd :filter-expr))
         (mutator-expr (clingon:getopt cmd :mutator-expr)))
     (handler-bind ((error (lambda (condition) (invoke-debugger condition))))
-      (apply #'cat-logs-string output-file format mutator-expr filter-expr args))))
+      (handler-case
+          (apply #'cat-logs-string output-file format mutator-expr filter-expr args)
+        ;; Still doesn't build on ECL due to not being able to find ASDF/SYSTEM::FIND-SYSTEM even if i add "asdf" to the
+        ;; :depends-on bit of my DEFSYSTEM call. Seem similar to
+        ;; https://www.reddit.com/r/Common_Lisp/comments/hicmyt/error_with_uiop_running_ecl_application_built_by/ in
+        ;; that weird things happen based on the order. If I put "asdf" before "str" it complains about not being able
+        ;; to find "str" component. /shrugs
+        ((or end-of-file #+sbcl sb-int:broken-pipe) nil)
+        #+sbcl
+        (sb-int:simple-file-error nil)))))
 
 (defparameter *nicknames*
   '((:o_h . :id.orig_h)
