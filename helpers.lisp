@@ -1,18 +1,13 @@
 (in-package :cleek)
 
-;; from fleek to support:
-;;
-;; * annotations (IP-LIKEs, default columns, default new column namer, modify at runtime)
-;; * DNS additions
-;; * timestamp filter
-;; * productive (these can be handled in general by filters)
-
 (defgeneric contains? (container x)
   (:documentation "Does CONTAINER contain X?")
   (:method ((container na::ip+) (x na::ip-like))
     (na:contains? container x))
   (:method ((container na::ip+) (x string))
     (na:contains? container (na:make-ip-address x)))
+  (:method ((container cl-dns::domain-trie) (x string))
+    (cl-dns:contains-domain? container x))
   (:method ((container hash-table) (x t))
     (gethash x container))
   (:method ((container cons) (x string))
@@ -34,11 +29,13 @@
 
 (serapeum:defalias s= #'string=)
 ;;; you could shadow = from CL-USER and do the same kind of dispatch.
-;; matches from a file
-;;; maybe something like:
-;;; (na:contains? (f "filename" :str/:ip/:domain) #I(:o_h))
-;;; would load the ips/nets in "filename" and check against contains? you'd want to #. on it so it gets evaluated
-;;; immediately and stored as the #<IP-SET> object (or LIST or w/e it is).
+
+(defun f (path &optional (type :str))
+  (let ((lines (uiop:read-file-lines path)))
+    (ecase type
+      (:str (coerce lines 'simple-vector)) ;; so #. trick works
+      (:ip (na:make-ip-set (mapcar #'na::make-ip-like lines)))
+      (:dns (apply #'cl-dns:make-trie lines)))))
 
 ;; TODO: Should these return 'CL:NULL if they fail instead of NIL?
 (defun e2ld (domain)

@@ -1,5 +1,13 @@
 (in-package :cleek)
 
+;; TODOs:
+;; * add more tests
+;; * zeek log adding fields
+;; * PRODUCTIVE?
+;; * timestamp filtering maybe t< t> t<= t>=? handle the conversion with generic functions?
+;; * annotations
+;; * save common filters/mutators to a file and use them on demand
+
 (defun cat/options ()
   (list (clingon:make-option :string
                              :description "Output file"
@@ -165,7 +173,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.6.0"
+   :version "0.7.0"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
