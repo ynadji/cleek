@@ -243,4 +243,27 @@
                                                               (or @resp_bytes 0)))"
                      "(and (plusp @total_bytes) (string= @proto \"tcp\"))" conn-log-json)
     (is (= 224 (count-rows test-output)))
-    (uiop:delete-file-if-exists test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :zeek "(setf @e2ld (cl-tld:get-domain-suffix @query)
+                                              @tld (cl-tld:get-tld @query))" "(string= @tld \"com\")" dns-log)
+    (is (= 15 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+    (cat-logs-string test-output :zeek "(setf @e2ld (cl-tld:get-domain-suffix @query)
+                                              @tld (cl-tld:get-tld @query))" "(string= @tld \"local\")" dns-log)
+    (is (= 6 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    ;; TODO: Update test when you have fully parsed stuff figured out.
+    (cat-logs-string test-output :zeek "(setf @total_bytes (+ (or (parse-integer @orig_bytes :junk-allowed t) 0)
+                                                              (or (parse-integer @resp_bytes :junk-allowed t) 0)))"
+                     "(and (= 1 @total_bytes) (string= @proto \"tcp\"))" conn-log)
+    (is (= 46 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :zeek "(setf @total_bytes (+ (or (parse-integer @orig_bytes :junk-allowed t) 0)
+                                                              (or (parse-integer @resp_bytes :junk-allowed t) 0)))"
+                     "(and (plusp @total_bytes) (string= @proto \"tcp\"))" conn-log)
+    (is (= 224 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+    ))

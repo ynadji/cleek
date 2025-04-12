@@ -28,6 +28,10 @@
                           (zeek-status zeek-log) :unparsed
                           (zeek-modified? zeek-log) nil)) ; TODO: remove duplicate in NEXT-RECORD :\
       (ax:reversef (zeek-raw-header zeek-log))
+      ;; Check for newly created fields from mutators.
+      (ax:when-let ((created-fields (set-difference (zeek-accessed-columns zeek-log) (zeek-fields zeek-log))))
+        (setf (zeek-created-fields zeek-log) created-fields
+              (zeek-created-types zeek-log) (make-list (length created-fields) :initial-element :string)))
       zeek-log)))
 
 (defun has-field? (zeek-log field)
@@ -42,7 +46,9 @@
 (defun get-value (zeek-log field)
   (ecase (zeek-format zeek-log)
     ;; TODO: these are always strings. what about when we want not strings?
-    (:zeek (aref (zeek-row-strings zeek-log) (field->idx zeek-log field)))
+    (:zeek (if (and (zeek-created-fields zeek-log) (not (has-field? zeek-log field)))
+               (gethash field (zeek-map zeek-log))
+               (aref (zeek-row-strings zeek-log) (field->idx zeek-log field))))
     ;; TODO: these are always "parsed" from jzon
     (:json (gethash field (zeek-map zeek-log)))))
 
@@ -53,7 +59,7 @@
                (:json (setf (gethash field (zeek-map zeek-log)) new-value)))
         (setf (zeek-modified? zeek-log) t))
       (prog1 (ecase (zeek-format zeek-log)
-               (:zeek (error "Defining new values for zeek logs not implemented."))
+               (:zeek (setf (gethash field (zeek-map zeek-log)) new-value))
                (:json (setf (gethash field (zeek-map zeek-log)) new-value)))
         (setf (zeek-modified? zeek-log) t))))
 
@@ -200,8 +206,8 @@
 
 (defun generate-zeek-header (zeek-log)
   (let ((path (or (str:downcase (string (zeek-path zeek-log))) "cleek_path"))
-        (types (zeek-types zeek-log))
-        (field-names (mapcar #'str:downcase (mapcar #'string (zeek-fields zeek-log)))))
+        (types (append (zeek-types zeek-log) (zeek-created-types zeek-log)))
+        (field-names (mapcar #'str:downcase (mapcar #'string (append (zeek-fields zeek-log) (zeek-created-fields zeek-log))))))
     (format nil "~a~%~a~%~a~%~a~%~a~%~a~%~a~%~a~%"
             (format nil "#separator \\x~2,'0x" (char-code *zeek-field-separator*))
             (format nil (format nil "#set_separator~a~~a" *zeek-field-separator*) *zeek-set-separator*)
@@ -218,17 +224,14 @@
                                                          (make-list (length field-names)
                                                                     :initial-element "not implemented")))))))
 
-(defun write-zeek-header (zeek-log stream format &optional new-columns)
+(defun write-zeek-header (zeek-log stream format)
   (when (eq format :zeek)
-    ;; TODO: how do i update the header with the new fields? what about their types? they're basically always strings
-    ;; until they're not. (if (and header (null new-columns))
-    ;; you could just extend the array. it only happens once at the beginning of a file and you're good to go. would
-    ;; only need to worry about parsing multiple files and resolving the column conflict.
-    (ax:if-let ((header (zeek-raw-header zeek-log)))
-      (format stream "~{~a~^~%~}~%" header)
-      (progn (ensure-map zeek-log) ;; this is probably unnecessary, right?
-             (ensure-fields zeek-log)
-             (format stream "~a" (generate-zeek-header zeek-log))))))
+    (let ((header (zeek-raw-header zeek-log))
+          (created-fields (zeek-created-fields zeek-log)))
+      (if (and header (null created-fields))
+          (format stream "~{~a~^~%~}~%" header)
+          (progn (ensure-fields zeek-log)
+                 (format stream "~a" (generate-zeek-header zeek-log)))))))
 
 (defun write-zeek-log-line (zeek-log stream format)
   (let ((same-format? (eq format (zeek-format zeek-log))))
@@ -255,6 +258,13 @@
                                           do (princ field stream)
                                           when (< i (length (zeek-row-strings zeek-log)))
                                             do (princ *zeek-field-separator* stream))
+                       (when (zeek-created-fields zeek-log)
+                         (princ *zeek-field-separator* stream)
+                         (loop for i from 1 for created-field in (zeek-created-fields zeek-log)
+                               for field = (gethash created-field (zeek-map zeek-log))
+                               do (princ field stream)
+                               when (< i (length (zeek-created-fields zeek-log)))
+                                 do (princ *zeek-field-separator* stream)))
                        ;; TODO: if there's stuff in ZEEK-MAP, iterate a dump. how do i ensure the order is the same
                        ;; every time?
                        (terpri stream))))))

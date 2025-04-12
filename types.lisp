@@ -14,11 +14,11 @@
   (field->idx (make-hash-table) :type hash-table)
   (status :unparsed :type keyword) ; :unparsed :bytes :? :string-map :parsed-map
   modified?
-  (buffer (make-array 32                ; Grow this if actually used.
-                      :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8)))
   (map (make-hash-table) :type hash-table)
   (format :zeek :type keyword)          ; :zeek :json
   accessed-columns
+  created-fields
+  created-types
   ;; track row num?
   )
 

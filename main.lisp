@@ -2,9 +2,8 @@
 
 ;; TODOs:
 ;; * add more tests
-;; * zeek log adding fields
 ;; * timestamp filtering maybe t< t> t<= t>=? handle the conversion with generic functions?
-;; * shorthand for fully parse. maybe @@?
+;; * shorthand for fully parse. maybe @@? how do i know to fully deparse then?
 
 (defvar *common-filters-and-mutators-path* #P"~/.config/cleek/common-filters-and-mutators.lisp")
 (defparameter *common-filters-and-mutators* nil)
@@ -189,7 +188,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.9.1"
+   :version "0.10.0"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
