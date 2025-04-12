@@ -3,9 +3,13 @@
 ;; TODOs:
 ;; * add more tests
 ;; * zeek log adding fields
-;; * PRODUCTIVE?
 ;; * timestamp filtering maybe t< t> t<= t>=? handle the conversion with generic functions?
-;; * save common filters/mutators to a file and use them on demand
+;; * save common filters/mutators to a file and use them on demand [in-progress]
+;; * shorthand for fully parse. maybe @@?
+(defvar *common-filters-and-mutators-path* #P"~/.config/cleek/common-filters-and-mutators.lisp")
+(defparameter *common-filters-and-mutators* nil)
+(when (probe-file *common-filters-and-mutators-path*)
+  (load *common-filters-and-mutators-path*))
 
 (defun cat/options ()
   (list (clingon:make-option :string
@@ -123,22 +127,36 @@
               (string= "LINE" (symbol-name form))) '(zeek-line log))
         ((column? form) (let ((form (column->keyword form)))
                           `(get-value log ,(or-nickname form))))
-        ((atom form) form)
+        ((atom form) (or (ax:assoc-value *common-filters-and-mutators* form)
+                         form))
         (t (cons (update-columns (car form))
                  (update-columns (cdr form))))))
 
+(defun get-filters-and-columns (filters &optional columns)
+  (declare (optimize debug))
+  (flet ((extract-columns (form)
+           (remove-duplicates (mapcar #'or-nickname (mapcar #'column->keyword (remove-if-not #'column?
+                                                                                             (ax:flatten form)))))))
+    (let ((new-filters (update-columns filters))
+          (new-columns (extract-columns filters)))
+      (if (or (eq filters t)
+              (and columns
+                   (null (set-exclusive-or columns (union columns new-columns)))))
+          (values new-filters columns)
+          (get-filters-and-columns new-filters new-columns)))))
+
+;; TODO: guard against filters without any @columns?
 (defun compile-runtime-filters (s)
-  (let* ((raw-filters (with-input-from-string (in s)
-                        (macroexpand-1 (read in nil))))
-         (filters (update-columns raw-filters))
-         (columns (mapcar #'or-nickname (mapcar #'column->keyword (remove-if-not #'column? (ax:flatten raw-filters))))))
-    (values (compile nil `(lambda (log) (declare (ignorable log))
-                            (restart-case ,filters
-                              (drop-line () :report (lambda (stream)
-                                                      (format stream "DROP-LINE: \"~a\"" (zeek-line log))) nil)
-                              (keep-line () t))))
-            columns
-            filters)))
+  (let ((raw-filters (with-input-from-string (in s)
+                       (read in nil))))
+    (multiple-value-bind (filters columns) (get-filters-and-columns raw-filters)
+      (values (compile nil `(lambda (log) (declare (ignorable log))
+                              (restart-case ,(macroexpand-1 filters)
+                                (drop-line () :report (lambda (stream)
+                                                        (format stream "DROP-LINE: \"~a\"" (zeek-line log))) nil)
+                                (keep-line () t))))
+              columns
+              filters))))
 
 (defun update-setters (form)
   (flet ((setter? (fun)
