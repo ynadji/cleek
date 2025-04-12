@@ -132,7 +132,7 @@
         (t (cons (update-columns (car form))
                  (update-columns (cdr form))))))
 
-(defun get-filters-and-columns (filters &optional columns)
+(defun expand-columns (filters &optional columns)
   (declare (optimize debug))
   (flet ((extract-columns (form)
            (remove-duplicates (mapcar #'or-nickname (mapcar #'column->keyword (remove-if-not #'column?
@@ -143,13 +143,13 @@
               (and columns
                    (null (set-exclusive-or columns (union columns new-columns)))))
           (values new-filters columns)
-          (get-filters-and-columns new-filters new-columns)))))
+          (expand-columns new-filters new-columns)))))
 
 ;; TODO: guard against filters without any @columns?
 (defun compile-runtime-filters (s)
   (let ((raw-filters (with-input-from-string (in s)
                        (read in nil))))
-    (multiple-value-bind (filters columns) (get-filters-and-columns raw-filters)
+    (multiple-value-bind (filters columns) (expand-columns raw-filters)
       (values (compile nil `(lambda (log) (declare (ignorable log))
                               (restart-case ,(macroexpand-1 filters)
                                 (drop-line () :report (lambda (stream)
@@ -180,12 +180,11 @@
                                 while form collect form)))
                (push 'progn forms))))
       (let* ((raw-mutators (with-input-from-string (in s)
-                             (read-all-progn in)))
-             (mutators (update-columns (update-setters raw-mutators)))
-             (columns (mapcar #'or-nickname (mapcar #'column->keyword (remove-if-not #'column? (ax:flatten raw-mutators))))))
-        (values (compile nil `(lambda (log) (declare (ignorable log)) ,(macroexpand-1 mutators)))
-                columns
-                mutators)))))
+                             (read-all-progn in))))
+        (multiple-value-bind (mutators columns) (expand-columns (update-setters raw-mutators))
+          (values (compile nil `(lambda (log) (declare (ignorable log)) ,(macroexpand-1 mutators)))
+                  columns
+                  mutators))))))
 
 (defun cat/command ()
   (clingon:make-command
