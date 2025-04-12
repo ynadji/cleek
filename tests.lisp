@@ -12,7 +12,9 @@
                 #:parse-zeek-type
                 #:unparse-zeek-type
                 #:cat-logs-string
-                #:string->keyword)
+                #:string->keyword
+                #:e2ld
+                #:tld)
   (:import-from #:cl-interpol
                 #:enable-interpol-syntax)
   (:export #:tests))
@@ -224,12 +226,12 @@
     (is (= 481 (count-rows conn-log) (count-rows conn-log-json)))
 
     ;; TODO: Add :zeek format when implemented.
-    (cat-logs-string test-output :json "(setf @e2ld (cl-tld:get-domain-suffix @query)
-                                              @tld (cl-tld:get-tld @query))" "(string= @tld \"com\")" dns-log-json)
+    (cat-logs-string test-output :json "(setf @e2ld (e2ld @query)
+                                              @tld (tld @query))" "(string= @tld \"com\")" dns-log-json)
     (is (= 15 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
-    (cat-logs-string test-output :json "(setf @e2ld (cl-tld:get-domain-suffix @query)
-                                              @tld (cl-tld:get-tld @query))" "(string= @tld \"local\")" dns-log-json)
+    (cat-logs-string test-output :json "(setf @e2ld (e2ld @query)
+                                              @tld (tld @query))" "(string= @tld \"local\")" dns-log-json)
     (is (= 6 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
@@ -245,12 +247,12 @@
     (is (= 224 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
-    (cat-logs-string test-output :zeek "(setf @e2ld (cl-tld:get-domain-suffix @query)
-                                              @tld (cl-tld:get-tld @query))" "(string= @tld \"com\")" dns-log)
+    (cat-logs-string test-output :zeek "(setf @e2ld (e2ld @query)
+                                              @tld (tld @query))" "(string= @tld \"com\")" dns-log)
     (is (= 15 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
-    (cat-logs-string test-output :zeek "(setf @e2ld (cl-tld:get-domain-suffix @query)
-                                              @tld (cl-tld:get-tld @query))" "(string= @tld \"local\")" dns-log)
+    (cat-logs-string test-output :zeek "(setf @e2ld (e2ld @query)
+                                              @tld (tld @query))" "(string= @tld \"local\")" dns-log)
     (is (= 6 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 

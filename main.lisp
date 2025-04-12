@@ -4,6 +4,7 @@
 ;; * add more tests
 ;; * timestamp filtering maybe t< t> t<= t>=? handle the conversion with generic functions?
 ;; * shorthand for fully parse. maybe @@? how do i know to fully deparse then?
+;; * suite for performance testing so you can optimize things more easily.
 
 (defvar *common-filters-and-mutators-path* #P"~/.config/cleek/common-filters-and-mutators.lisp")
 (defparameter *common-filters-and-mutators* nil)
