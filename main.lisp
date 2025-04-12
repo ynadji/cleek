@@ -4,12 +4,10 @@
 ;; * add more tests
 ;; * zeek log adding fields
 ;; * timestamp filtering maybe t< t> t<= t>=? handle the conversion with generic functions?
-;; * save common filters/mutators to a file and use them on demand [in-progress]
 ;; * shorthand for fully parse. maybe @@?
+
 (defvar *common-filters-and-mutators-path* #P"~/.config/cleek/common-filters-and-mutators.lisp")
 (defparameter *common-filters-and-mutators* nil)
-(when (probe-file *common-filters-and-mutators-path*)
-  (load *common-filters-and-mutators-path*))
 
 (defun cat/options ()
   (list (clingon:make-option :string
@@ -92,6 +90,8 @@
         (format (string->keyword (clingon:getopt cmd :format)))
         (filter-expr (clingon:getopt cmd :filter-expr))
         (mutator-expr (clingon:getopt cmd :mutator-expr)))
+    (when (probe-file *common-filters-and-mutators-path*)
+      (load *common-filters-and-mutators-path*))
     (handler-bind ((error (lambda (condition) (invoke-debugger condition))))
       (handler-case
           (apply #'cat-logs-string output-file format mutator-expr filter-expr args)
@@ -189,7 +189,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.8.0"
+   :version "0.9.0"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
