@@ -28,12 +28,17 @@
 ;;; only makes sense for strings, no?
 
 (serapeum:defalias s= #'string=)
+(serapeum:defalias s/= #'string/=)
 ;;; you could shadow = from CL-USER and do the same kind of dispatch.
 
-(defun f (path &optional (type :str))
+(defun f (path &optional (type :str) (max-vector-size 7))
   (let ((lines (uiop:read-file-lines path)))
     (ecase type
-      (:str (coerce lines 'simple-vector)) ;; so #. trick works
+      (:str (let ((len (length lines)))
+              (if (<= len max-vector-size)
+                  (coerce lines 'simple-vector) ;; so #. trick works
+                  (ax:alist-hash-table (mapcar #'cons lines (make-list len :initial-element t))
+                                       :test #'equal :size len))))
       (:ip (na:make-ip-set (mapcar #'na::make-ip-like lines)))
       (:dns (apply #'cl-dns:make-trie lines)))))
 
