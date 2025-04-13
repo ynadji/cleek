@@ -216,7 +216,15 @@
                                              (or (plusp @orig_bytes) 
                                                  (plusp @resp_bytes)))" conn-log-json)
     (is (= 7 (count-rows test-output)))
-    (uiop:delete-file-if-exists test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    ;; TODO: Add JSON if you figure out how to unify the expectations.
+    (let ((cleek::*common-filters-and-mutators-path* (asdf:system-relative-pathname "cleek" "common-filters-and-mutators.lisp")))
+      (cleek::init-common-filters-and-mutators)
+      ;; We need to specify CLEEK:: only because we are calling from a different package.
+      (cat-logs-string test-output :zeek nil "(and (string= @proto \"tcp\") cleek::productive?)" conn-log)
+      (is (= 150 (count-rows test-output)))
+      (uiop:delete-file-if-exists test-output))))
 
 (defmacro with-tmp-file ((var string) &body body)
   `(uiop:with-temporary-file (:pathname ,var)
@@ -296,8 +304,13 @@
                   (t (is (string= label "unknown"))))))))
     (uiop:delete-file-if-exists test-output)
 
-    ;; TODO: Add saved filters test
-    ))
+    ;; TODO: Add JSON if you figure out how to unify the expectations.
+    (let ((cleek::*common-filters-and-mutators-path* (asdf:system-relative-pathname "cleek" "common-filters-and-mutators.lisp")))
+      (cleek::init-common-filters-and-mutators)
+      ;; We need to specify CLEEK:: only because we are calling from a different package.
+      (cat-logs-string test-output :zeek "cleek::domain-parts" "(or (string= @query_tld \"net\") (string= @query_e2ld \"slack.com\"))" dns-log)
+      (is (= 6 (count-rows test-output)))
+      (uiop:delete-file-if-exists test-output))))
 
 (test filters-from-file
   (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory)))

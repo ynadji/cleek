@@ -1,13 +1,15 @@
 (in-package :cleek)
 
 ;; TODOs:
-;; * add more tests
 ;; * timestamp filtering maybe t< t> t<= t>=? handle the conversion with generic functions?
 ;; * shorthand for fully parse. maybe @@? how do i know to fully deparse then?
 ;; * suite for performance testing so you can optimize things more easily.
 
 (defvar *common-filters-and-mutators-path* #P"~/.config/cleek/common-filters-and-mutators.lisp")
 (defparameter *common-filters-and-mutators* nil)
+(defun init-common-filters-and-mutators ()
+  (when (probe-file *common-filters-and-mutators-path*)
+    (load *common-filters-and-mutators-path*)))
 
 (defun cat/options ()
   (list (clingon:make-option :string
@@ -195,8 +197,7 @@
         (format (string->keyword (clingon:getopt cmd :format)))
         (filter-expr (clingon:getopt cmd :filter-expr))
         (mutator-expr (clingon:getopt cmd :mutator-expr)))
-    (when (probe-file *common-filters-and-mutators-path*)
-      (load *common-filters-and-mutators-path*))
+    (init-common-filters-and-mutators)
     (handler-bind ((error (lambda (condition) (invoke-debugger condition))))
       (handler-case
           (apply #'cat-logs-string output-file format mutator-expr filter-expr args)
