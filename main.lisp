@@ -11,33 +11,6 @@
   (when (probe-file *common-filters-and-mutators-path*)
     (load *common-filters-and-mutators-path*)))
 
-(defun cat/options ()
-  (list (clingon:make-option :string
-                             :description "Output file"
-                             :short-name #\o
-                             :long-name "output-file"
-                             :initial-value "/dev/stdout"
-                             :key :output)
-        (clingon:make-option :choice
-                             :description "Output format"
-                             :short-name #\f
-                             :long-name "output-format"
-                             :items '("zeek" "json" "input-format")
-                             :initial-value "input-format"
-                             :key :format)
-        (clingon:make-option :string
-                             :description "Filter expression"
-                             :short-name #\x
-                             :long-name "filter"
-                             :initial-value nil
-                             :key :filter-expr)
-        (clingon:make-option :string
-                             :description "Mutator expression"
-                             :short-name #\m
-                             :long-name "mutator"
-                             :initial-value nil
-                             :key :mutator-expr)))
-
 (defun cat-logs-string (output-file output-format mutator-expr filter-expr &rest input-files)
   (multiple-value-bind (mutator-func mutator-columns) (compile-runtime-mutators mutator-expr)
     (multiple-value-bind (filter-func filter-columns) (compile-runtime-filters filter-expr)
@@ -187,6 +160,33 @@
       (remove-mutator ()
         :report "Remove mutator"
         nil))))
+
+(defun cat/options ()
+  (list (clingon:make-option :string
+                             :description "Output file"
+                             :short-name #\o
+                             :long-name "output-file"
+                             :initial-value "/dev/stdout"
+                             :key :output)
+        (clingon:make-option :choice
+                             :description "Output format"
+                             :short-name #\f
+                             :long-name "output-format"
+                             :items '("zeek" "json" "input-format")
+                             :initial-value "input-format"
+                             :key :format)
+        (clingon:make-option :string
+                             :description "Filter expression"
+                             :short-name #\x
+                             :long-name "filter"
+                             :initial-value nil
+                             :key :filter-expr)
+        (clingon:make-option :string
+                             :description "Mutator expression"
+                             :short-name #\m
+                             :long-name "mutator"
+                             :initial-value nil
+                             :key :mutator-expr)))
 
 (defun cat/handler (cmd)
   (in-package :cleek)
