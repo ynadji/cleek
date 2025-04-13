@@ -160,7 +160,7 @@
             (loop for input-path in (uiop:directory-files (merge-pathnames #?"${input-format}/" *test-inputs-dir*))
                   for basename = (pathname-name input-path)
                   for output-path = (merge-pathnames basename tmp-dir)
-                  do (cat-logs-string output-path (string->keyword output-format) nil "t" input-path)
+                  do (cat-logs-string output-path (string->keyword output-format) nil nil input-path)
                      (is (zeek-log= input-path output-path))))))
 
 (defun count-rows (log-path)
@@ -225,7 +225,6 @@
     (is (= 25 (count-rows dns-log) (count-rows dns-log-json)))
     (is (= 481 (count-rows conn-log) (count-rows conn-log-json)))
 
-    ;; TODO: Add :zeek format when implemented.
     (cat-logs-string test-output :json "(setf @e2ld (e2ld @query)
                                               @tld (tld @query))" "(string= @tld \"com\")" dns-log-json)
     (is (= 15 (count-rows test-output)))

@@ -27,7 +27,7 @@
                              :description "Filter expression"
                              :short-name #\x
                              :long-name "filter"
-                             :initial-value "t"
+                             :initial-value nil
                              :key :filter-expr)
         (clingon:make-option :string
                              :description "Mutator expression"
@@ -51,8 +51,8 @@
               (loop while (zeek-line zeek-log)
                     do (when mutator-func
                          (funcall mutator-func zeek-log))
-                       ;; TODO: Avoid function call if we aren't using any filters.
-                       (when (funcall filter-func zeek-log)
+                       (when (or (null filter-func)
+                                 (funcall filter-func zeek-log))
                          (write-zeek-log-line zeek-log out output-format))
                        (next-record zeek-log))))
           (when (eq output-format :zeek)
@@ -130,25 +130,25 @@
 
 ;; TODO: guard against filters without any @columns?
 (defun compile-runtime-filters (s)
-  (handler-case
-      (restart-case
-          (let ((raw-filters (with-input-from-string (in s)
-                               (read in nil))))
-            (multiple-value-bind (filters columns) (expand-columns raw-filters)
-              (values (compile nil `(lambda (log) (declare (ignorable log))
-                                      (restart-case ,(macroexpand-1 filters)
-                                        (drop-line () :report (lambda (stream)
-                                                                (format stream "DROP-LINE: \"~a\"" (zeek-line log))) nil)
-                                        (keep-line () t))))
-                      columns
-                      filters)))
-        (set-new-filter (filter)
-          :report "Enter a new filter"
-          :interactive (lambda () (prompt-new-value "Please enter a new filter: "))
-          (compile-runtime-filters filter))
-        (remove-filter ()
-          :report "Remove filter"
-          (compile-runtime-filters "t")))))
+  (when s
+    (restart-case
+        (let ((raw-filters (with-input-from-string (in s)
+                             (read in nil))))
+          (multiple-value-bind (filters columns) (expand-columns raw-filters)
+            (values (compile nil `(lambda (log) (declare (ignorable log))
+                                    (restart-case ,(macroexpand-1 filters)
+                                      (drop-line () :report (lambda (stream)
+                                                              (format stream "DROP-LINE: \"~a\"" (zeek-line log))) nil)
+                                      (keep-line () t))))
+                    columns
+                    filters)))
+      (set-new-filter (filter)
+        :report "Enter a new filter"
+        :interactive (lambda () (prompt-new-value "Please enter a new filter: "))
+        (compile-runtime-filters filter))
+      (remove-filter ()
+        :report "Remove filter"
+        nil))))
 
 (defun update-setters (form)
   (flet ((setter? (fun)
@@ -217,7 +217,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.10.1"
+   :version "0.10.2"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
