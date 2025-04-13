@@ -14,7 +14,10 @@
                 #:cat-logs-string
                 #:string->keyword
                 #:e2ld
-                #:tld)
+                #:tld
+                #:c?
+                #:f
+                #:anno)
   (:import-from #:cl-interpol
                 #:enable-interpol-syntax)
   (:export #:tests))
@@ -215,7 +218,13 @@
     (is (= 7 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)))
 
+(defmacro with-tmp-file ((var string) &body body)
+  `(uiop:with-temporary-file (:pathname ,var)
+     (str:to-file ,var ,string)
+     ,@body))
+
 (test mutators
+  (enable-ip-syntax)
   (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory)))
         (dns-log (merge-pathnames "zeek/dns.log" *test-inputs-dir*))
         (dns-log-json (merge-pathnames "json/dns.log" *test-inputs-dir*))
@@ -267,4 +276,68 @@
                      "(and (plusp @total_bytes) (string= @proto \"tcp\"))" conn-log)
     (is (= 224 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :zeek "(setf @orig_label (anno @o_h #.#I(\"192.168.0.0/16\") \"192.168\" \".127.52.\" \"string-contains\" \'(\"fe80::1462:3ff9:fd68:b0fc\") \"list-contains\" t \"unknown\"))" nil dns-log)
+
+    (let ((lines (uiop:read-file-lines test-output)))
+      (dolist (line lines)
+        (when (str:starts-with? "#fields" line)
+          (is (str:ends-with? "orig_label" line)))
+        (unless (str:starts-with? "#" line)
+          (let* ((fields (str:split #\Tab line))
+                 (o-h (third fields))
+                 (label (car (last fields))))
+            (cond ((str:starts-with? "192.168" o-h)
+                   (is (string= label "192.168")))
+                  ((str:contains? ".127.52." o-h)
+                   (is (string= label "string-contains")))
+                  ((string= "fe80::1462:3ff9:fd68:b0fc" o-h)
+                   (is (string= label "list-contains")))
+                  (t (is (string= label "unknown"))))))))
+    (uiop:delete-file-if-exists test-output)
+
+    ;; TODO: Add saved filters test
     ))
+
+(test filters-from-file
+  (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory)))
+        (dns-log (merge-pathnames "zeek/dns.log" *test-inputs-dir*))
+        (dns-log-json (merge-pathnames "json/dns.log" *test-inputs-dir*)))
+    (with-tmp-file (queries "unchartedsoftware.slack.com
+www.dropbox.com
++.local
+")
+      (cat-logs-string test-output :zeek nil #?"(c? (f \"${queries}\" :dns) @query)" dns-log)
+      (is (= 10 (count-rows test-output)))
+      (uiop:delete-file-if-exists test-output)
+
+      (cat-logs-string test-output :json nil #?"(c? (f \"${queries}\" :dns) @query)" dns-log-json)
+      (is (= 10 (count-rows test-output)))
+      (uiop:delete-file-if-exists test-output)
+
+      (cat-logs-string test-output :json nil #?"(c? (f \"${queries}\" :dns) @query)" dns-log)
+      (is (= 10 (count-rows test-output)))
+      (uiop:delete-file-if-exists test-output)
+
+      (cat-logs-string test-output :zeek nil #?"(c? (f \"${queries}\" :dns) @query)" dns-log-json)
+      (is (= 10 (count-rows test-output)))
+      (uiop:delete-file-if-exists test-output))
+
+    (with-tmp-file (foo "one
+two
+three
+four
+five
+six
+seven")
+      (is (typep (f #?"${foo}") 'vector)))
+
+    (with-tmp-file (foo "one
+two
+three
+four
+five
+six
+seven
+eight")
+      (is (typep (f #?"${foo}") 'hash-table)))))
