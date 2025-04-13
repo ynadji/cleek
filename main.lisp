@@ -51,6 +51,7 @@
               (loop while (zeek-line zeek-log)
                     do (when mutator-func
                          (funcall mutator-func zeek-log))
+                       ;; TODO: Avoid function call if we aren't using any filters.
                        (when (funcall filter-func zeek-log)
                          (write-zeek-log-line zeek-log out output-format))
                        (next-record zeek-log))))
@@ -81,29 +82,6 @@
 (defun perf-test-json (&optional (output-format :json) (filter-expr "t") (path #P"~/tmp/test2.log"))
   (cat-logs-string path output-format filter-expr #P"~/code/cleek/data/json/homenet-uncompressed.log"))
 
-(defun cat/handler (cmd)
-  (in-package :cleek)
-  (na:enable-ip-syntax)
-  (cl-interpol:enable-interpol-syntax)
-  (let ((args (clingon:command-arguments cmd))
-        (output-file (clingon:getopt cmd :output))
-        (format (string->keyword (clingon:getopt cmd :format)))
-        (filter-expr (clingon:getopt cmd :filter-expr))
-        (mutator-expr (clingon:getopt cmd :mutator-expr)))
-    (when (probe-file *common-filters-and-mutators-path*)
-      (load *common-filters-and-mutators-path*))
-    (handler-bind ((error (lambda (condition) (invoke-debugger condition))))
-      (handler-case
-          (apply #'cat-logs-string output-file format mutator-expr filter-expr args)
-        ;; Still doesn't build on ECL due to not being able to find ASDF/SYSTEM::FIND-SYSTEM even if i add "asdf" to the
-        ;; :depends-on bit of my DEFSYSTEM call. Seem similar to
-        ;; https://www.reddit.com/r/Common_Lisp/comments/hicmyt/error_with_uiop_running_ecl_application_built_by/ in
-        ;; that weird things happen based on the order. If I put "asdf" before "str" it complains about not being able
-        ;; to find "str" component. /shrugs
-        ((or end-of-file #+sbcl sb-int:broken-pipe) nil)
-        #+sbcl
-        (sb-int:simple-file-error nil)))))
-
 (defparameter *nicknames*
   '((:o_h . :id.orig_h)
     (:r_h . :id.resp_h)
@@ -133,7 +111,6 @@
                  (update-columns (cdr form))))))
 
 (defun expand-columns (filters &optional columns)
-  (declare (optimize debug))
   (flet ((extract-columns (form)
            (remove-duplicates (mapcar #'or-nickname (mapcar #'column->keyword (remove-if-not #'column?
                                                                                              (ax:flatten form)))))))
@@ -145,18 +122,33 @@
           (values new-filters columns)
           (expand-columns new-filters new-columns)))))
 
+;; From https://lispcookbook.github.io/cl-cookbook/error_handling.html#defining-restarts-restart-case
+(defun prompt-new-value (prompt)
+  (format *query-io* prompt)
+  (force-output *query-io*)
+  (list (read *query-io*)))
+
 ;; TODO: guard against filters without any @columns?
 (defun compile-runtime-filters (s)
-  (let ((raw-filters (with-input-from-string (in s)
-                       (read in nil))))
-    (multiple-value-bind (filters columns) (expand-columns raw-filters)
-      (values (compile nil `(lambda (log) (declare (ignorable log))
-                              (restart-case ,(macroexpand-1 filters)
-                                (drop-line () :report (lambda (stream)
-                                                        (format stream "DROP-LINE: \"~a\"" (zeek-line log))) nil)
-                                (keep-line () t))))
-              columns
-              filters))))
+  (handler-case
+      (restart-case
+          (let ((raw-filters (with-input-from-string (in s)
+                               (read in nil))))
+            (multiple-value-bind (filters columns) (expand-columns raw-filters)
+              (values (compile nil `(lambda (log) (declare (ignorable log))
+                                      (restart-case ,(macroexpand-1 filters)
+                                        (drop-line () :report (lambda (stream)
+                                                                (format stream "DROP-LINE: \"~a\"" (zeek-line log))) nil)
+                                        (keep-line () t))))
+                      columns
+                      filters)))
+        (set-new-filter (filter)
+          :report "Enter a new filter"
+          :interactive (lambda () (prompt-new-value "Please enter a new filter: "))
+          (compile-runtime-filters filter))
+        (remove-filter ()
+          :report "Remove filter"
+          (compile-runtime-filters "t")))))
 
 (defun update-setters (form)
   (flet ((setter? (fun)
@@ -174,22 +166,58 @@
 ;; GET-VALUE.
 (defun compile-runtime-mutators (s)
   (when s
-    ;; Read all forms in mutator string and wrap in PROGN.
-    (flet ((read-all-progn (stream)
-             (let ((forms (loop for form = (read stream nil)
-                                while form collect form)))
-               (push 'progn forms))))
-      (let* ((raw-mutators (with-input-from-string (in s)
-                             (read-all-progn in))))
-        (multiple-value-bind (mutators columns) (expand-columns (update-setters raw-mutators))
-          (values (compile nil `(lambda (log) (declare (ignorable log)) ,(macroexpand-1 mutators)))
-                  columns
-                  mutators))))))
+    (restart-case
+        ;; Read all forms in mutator string and wrap in PROGN.
+        (flet ((read-all-progn (stream)
+                 (let ((forms (loop for form = (read stream nil)
+                                    while form collect form)))
+                   (push 'progn forms))))
+          (let* ((raw-mutators (with-input-from-string (in s)
+                                 (read-all-progn in))))
+            (multiple-value-bind (mutators columns) (expand-columns (update-setters raw-mutators))
+              (values (compile nil `(lambda (log) (declare (ignorable log)) ,(macroexpand-1 mutators)))
+                      columns
+                      mutators))))
+      (set-new-mutator (mutator)
+        :report "Enter a new mutator"
+        :interactive (lambda () (prompt-new-value "Please enter a new mutator: "))
+        (compile-runtime-mutators mutator))
+      (remove-mutator ()
+        :report "Remove mutator"
+        nil))))
+
+(defun cat/handler (cmd)
+  (in-package :cleek)
+  (na:enable-ip-syntax)
+  (cl-interpol:enable-interpol-syntax)
+  (let ((args (clingon:command-arguments cmd))
+        (output-file (clingon:getopt cmd :output))
+        (format (string->keyword (clingon:getopt cmd :format)))
+        (filter-expr (clingon:getopt cmd :filter-expr))
+        (mutator-expr (clingon:getopt cmd :mutator-expr)))
+    (when (probe-file *common-filters-and-mutators-path*)
+      (load *common-filters-and-mutators-path*))
+    (handler-bind ((error (lambda (condition) (invoke-debugger condition))))
+      (handler-case
+          (apply #'cat-logs-string output-file format mutator-expr filter-expr args)
+        ;; Still doesn't build on ECL due to not being able to find ASDF/SYSTEM::FIND-SYSTEM even if i add "asdf" to the
+        ;; :depends-on bit of my DEFSYSTEM call. Seem similar to
+        ;; https://www.reddit.com/r/Common_Lisp/comments/hicmyt/error_with_uiop_running_ecl_application_built_by/ in
+        ;; that weird things happen based on the order. If I put "asdf" before "str" it complains about not being able
+        ;; to find "str" component. /shrugs
+        ;;((or end-of-file #+sbcl sb-int:broken-pipe) nil)
+        ;;
+        ;; if you handle END-OF-FILE here, it prevents the RESTART-CASE in the COMPILE-RUNTIME-* functions from being
+        ;; able to handle the restarts. unsure why.
+        (sb-int:broken-pipe nil)
+        ;; If there's a debugger error, after aborting SIMPLE-FILE-ERROR is raised again. This let's a user immediately
+        ;; exit after running into an error.
+        (sb-int:simple-file-error nil)))))
 
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.10.0"
+   :version "0.10.1"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
