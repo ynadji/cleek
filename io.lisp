@@ -41,18 +41,18 @@
     ;; TODO: these are always "parsed" from jzon
     (:json (gethash field (zeek-map zeek-log)))))
 
-;; TODO: if we are in :ZEEK-MAP territory _or_ we are getting a newly defined column, use the zeek-map for :zeek,
-;; otherwise, use the array.
-(defun get-value (zeek-log field)
+(defun get-value (zeek-log field &optional fully-parsed?)
   (ecase (zeek-format zeek-log)
-    ;; TODO: these are always strings. what about when we want not strings?
-    (:zeek (if (and (zeek-created-fields zeek-log) (not (has-field? zeek-log field)))
-               (gethash field (zeek-map zeek-log))
-               (aref (zeek-row-strings zeek-log) (field->idx zeek-log field))))
+    (:zeek (let ((val (if (and (zeek-created-fields zeek-log) (not (has-field? zeek-log field)))
+                          (gethash field (zeek-map zeek-log))
+                          (aref (zeek-row-strings zeek-log) (field->idx zeek-log field)))))
+             (if fully-parsed?
+                 (parse-zeek-type val (field->type zeek-log field) t)
+                 val)))
     ;; TODO: these are always "parsed" from jzon
     (:json (gethash field (zeek-map zeek-log)))))
 
-(defun (setf get-value) (new-value zeek-log field)
+(defun (setf get-value) (new-value zeek-log field &optional fully-parsed?)
   (if (has-field? zeek-log field)
       (prog1 (ecase (zeek-format zeek-log)
                (:zeek (setf (aref (zeek-row-strings zeek-log) (field->idx zeek-log field)) new-value))
@@ -168,27 +168,32 @@
   (when (zerop (hash-table-count (zeek-field->idx zeek-log)))
     (ensure-fields zeek-log)
     (loop for idx from 0 for field in (zeek-fields zeek-log)
-          do (setf (gethash field (zeek-field->idx zeek-log)) idx))))
+          for type in (zeek-types zeek-log)
+          do (setf (gethash field (zeek-field->idx zeek-log)) idx
+                   (gethash field (zeek-field->type zeek-log)) type))))
 
 (defun field->idx (zeek-log field)
   (gethash field (zeek-field->idx zeek-log)))
 
+(defun field->type (zeek-log field)
+  (gethash field (zeek-field->type zeek-log)))
+
 ;; TODO: i probably don't need this anymore. just something that
 ;; writes out a json log.
-(defun ensure-map (zeek-log)     ; TODO: add parse for :parsed-map
+(defun ensure-map (zeek-log)            ; TODO: add parse for :parsed-map
   (when (member (zeek-status zeek-log) '(:unparsed :row-strings))
-   (ecase (zeek-format zeek-log)
-     (:zeek
-      (clrhash (zeek-map zeek-log))
-      (loop for field in (split-sequence *zeek-field-separator* (zeek-line zeek-log))
-            for name in (zeek-fields zeek-log)
-            for type in (zeek-types zeek-log)
-            do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)
-                     (zeek-status zeek-log) :zeek-map)))
-     (:json
-      (clrhash (zeek-map zeek-log))
-      (setf (zeek-map zeek-log) (jzon:parse (zeek-line zeek-log) :key-fn #'string->keyword)
-            (zeek-status zeek-log) :jzon-map)))))
+    (ecase (zeek-format zeek-log)
+      (:zeek
+       (clrhash (zeek-map zeek-log))
+       (loop for field in (split-sequence *zeek-field-separator* (zeek-line zeek-log))
+             for name in (zeek-fields zeek-log)
+             for type in (zeek-types zeek-log)
+             do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)
+                      (zeek-status zeek-log) :zeek-map)))
+      (:json
+       (clrhash (zeek-map zeek-log))
+       (setf (zeek-map zeek-log) (jzon:parse (zeek-line zeek-log) :key-fn #'string->keyword)
+             (zeek-status zeek-log) :jzon-map)))))
 
 (defun ensure-zeek-map (zeek-log)
   (when (member (zeek-status zeek-log) '(:unparsed :row-strings))

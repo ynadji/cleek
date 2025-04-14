@@ -12,6 +12,7 @@
   row-strings
   row
   (field->idx (make-hash-table) :type hash-table)
+  (field->type (make-hash-table) :type hash-table)
   (status :unparsed :type keyword) ; :unparsed :bytes :? :string-map :parsed-map
   modified?
   (map (make-hash-table) :type hash-table)
@@ -69,6 +70,15 @@
     (:subnet . ,#'na:make-ip-network)
     (:enum . ,#'identity)               ; just keep it as a string i suppose
     ))
+
+;; TODO: think about this more. For port, 0 makes sense since it's reserved and should never actually be used. but for
+;; something like RCODE, which is a count, 0 is a valid value. I suppose we're typically only doing math on these things
+;; and for ORIG_BYTES, 0 as a default makes sense. When would we want to add RCODEs?
+(defun zeek-primitive-default (type)
+  (case type
+    ((:count :int :port) 0)
+    ((:double :interval :time) 0.0d0)
+    (t 'cl:null)))
 
 (defparameter *zeek-jsonify*
   `((:bool . ,(lambda (x) (if x "T" "F")))
@@ -149,10 +159,11 @@
 ;; check for unset/empty
 ;; check for primitive-type with when-let
 ;; then do check for aggregates.
-(defun parse-zeek-type (field type)
+(defun parse-zeek-type (field type &optional default?)
   (let ((type-string (keyword->string type)))
     ;; unset should probably be 'null and empty should probably be #() (since '() is eq to nil)
-    (cond ((string= field (string *zeek-unset-field*)) 'cl::null)
+    (cond ((string= field (string *zeek-unset-field*)) (if default? (zeek-primitive-default type)
+                                                           'cl::null))
           ((string= field (string *zeek-empty-field*))
            (if (eq type :string) "" #()))
           ((or (str:starts-with? "set" type-string)

@@ -2,8 +2,10 @@
 
 ;; TODOs:
 ;; * timestamp filtering maybe t< t> t<= t>=? handle the conversion with generic functions?
-;; * shorthand for fully parse. maybe @@? how do i know to fully deparse then?
+;;   yeah just have aliases and a alias for LOCAL-TIME:PARSE-TIMESTRING and you should be good.
+;; * shorthand for fully parse. maybe @@? how do i know to fully deparse then? i don't have to! [in-progress]
 ;; * suite for performance testing so you can optimize things more easily.
+;; * "learn" new zeek log formats.
 
 (defvar *common-filters-and-mutators-path* #P"~/.config/cleek/common-filters-and-mutators.lisp")
 (defparameter *common-filters-and-mutators* nil)
@@ -70,16 +72,19 @@
 (defun column? (symbol)
   (and (symbolp symbol) (char= #\@ (char (symbol-name symbol) 0))))
 
+(defun fully-parsed-column? (symbol)
+  (and (column? symbol) (char= #\@ (char (symbol-name symbol) 1))))
+
 (defun column->keyword (symbol)
   (when (column? symbol)
-    (intern (subseq (symbol-name symbol) 1) :keyword)))
+    (intern (str:trim-left (symbol-name symbol) :char-bag "@") :keyword)))
 
 (defun update-columns (form)
   ;; (eq form 'line) didn't work and i don't know why...
   (cond ((and (symbolp form)
               (string= "LINE" (symbol-name form))) '(zeek-line log))
-        ((column? form) (let ((form (column->keyword form)))
-                          `(get-value log ,(or-nickname form))))
+        ((column? form) (let ((keyword (column->keyword form)))
+                          `(get-value log ,(or-nickname keyword) ,(fully-parsed-column? form))))
         ((atom form) (or (ax:assoc-value *common-filters-and-mutators* form)
                          form))
         (t (cons (update-columns (car form))
@@ -218,7 +223,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.10.2"
+   :version "0.11.0-dev"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
