@@ -2,39 +2,70 @@
 
 ;; TODOs:
 ;; * timestamp filtering maybe t< t> t<= t>=? handle the conversion with generic functions?
-;;   yeah just have aliases and a alias for LOCAL-TIME:PARSE-TIMESTRING and you should be good.
-;; * shorthand for fully parse. maybe @@? how do i know to fully deparse then? i don't have to! [in-progress]
+;;   yeah just have aliases and an alias for LOCAL-TIME:PARSE-TIMESTRING and you should be good.
 ;; * suite for performance testing so you can optimize things more easily.
-;; * "learn" new zeek log formats.
+;; * "learn" new zeek log formats. this honestly isn't super important since you're mostly working with :zeek logs.
+;; * JIT optimize three sets of compiled functions: essentially make commonly used columns are extracted once and shared
+;;   across the three compiled functions.
 
+(defvar *debug-compiled-functions* nil)
 (defvar *common-filters-and-mutators-path* #P"~/.config/cleek/common-filters-and-mutators.lisp")
-(defparameter *common-filters-and-mutators* nil)
+(defvar *common-filters-and-mutators* nil)
 (defun init-common-filters-and-mutators ()
   (when (probe-file *common-filters-and-mutators-path*)
     (load *common-filters-and-mutators-path*)))
 
+(defun foo (log)
+  ;; # assembly generated
+  ;; optimized, save accesses: 60 bytes
+  ;; unoptimized, save accesses: 76 bytes
+  ;; optimized, nosave: 248 bytes
+  ;; unoptimized, nosave: 256 bytes
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0)))
+  #+or (AND (GET-VALUE LOG :ID.ORIG_H NIL) (GET-VALUE LOG :ID.ORIG_H NIL)
+            (GET-VALUE LOG :ID.ORIG_H NIL) (GET-VALUE LOG :ID.ORIG_H NIL)
+            (GET-VALUE LOG :ID.ORIG_H NIL))
+  (let ((val (get-value log :id.orig_h)))
+    (AND val val val val val)))
+
+(defun ensure-fully-parsed-non-nil-func (full-columns)
+  (when full-columns
+    (let ((filters (cons 'and (mapcar (lambda (c) `(get-value log ,(or-nickname c) t)) full-columns))))
+      (values (compile nil `(lambda (log) (declare (ignorable log))
+                              ,filters))
+              filters))))
+
 (defun cat-logs-string (output-file output-format mutator-expr filter-expr &rest input-files)
-  (multiple-value-bind (mutator-func mutator-columns) (compile-runtime-mutators mutator-expr)
-    (multiple-value-bind (filter-func filter-columns) (compile-runtime-filters filter-expr)
-      (let ((columns (union mutator-columns filter-columns)))
-        (with-open-file (out output-file :direction :output :if-exists :supersede)
-          (when (zerop (length input-files))
-            (push "/dev/stdin" input-files))
-          (loop for in-path in input-files do
-            (with-zeek-log (zeek-log in-path columns)
-              (when (eq output-format :input-format)
-                (setf output-format (zeek-format zeek-log)))
-              (write-zeek-header zeek-log out output-format)
-              (loop while (zeek-line zeek-log)
-                    do (when mutator-func
-                         (funcall mutator-func zeek-log))
-                       (when (or (null filter-func)
-                                 (funcall filter-func zeek-log))
-                         (write-zeek-log-line zeek-log out output-format))
-                       (next-record zeek-log))))
-          (when (eq output-format :zeek)
-            (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
-                    (timestamp-to-zeek-open-close-string (local-time:now)))))))))
+  (multiple-value-bind (mutator-func mutator-columns mutator-full-columns mutators) (compile-runtime-mutators mutator-expr)
+    (multiple-value-bind (filter-func filter-columns filter-full-columns filters) (compile-runtime-filters filter-expr)
+      (multiple-value-bind (ensure-truthy-parse-func ensure-filters)
+          (ensure-fully-parsed-non-nil-func (union mutator-full-columns filter-full-columns))
+        (let ((columns (union mutator-columns filter-columns)))
+          (when *debug-compiled-functions*
+            (format t "# fully parsed column filter~%~a~%" ensure-filters)
+            (format t "~%# mutators~%~a~%" mutators)
+            (format t "~%# filters~%~a~%" filters)
+            (return-from cat-logs-string))
+          (with-open-file (out output-file :direction :output :if-exists :supersede)
+            (when (zerop (length input-files))
+              (push "/dev/stdin" input-files))
+            (loop for in-path in input-files do
+              (with-zeek-log (zeek-log in-path columns)
+                (when (eq output-format :input-format)
+                  (setf output-format (zeek-format zeek-log)))
+                (write-zeek-header zeek-log out output-format)
+                (loop while (zeek-line zeek-log)
+                      when (or (null ensure-truthy-parse-func)
+                               (funcall ensure-truthy-parse-func zeek-log))
+                        do (when mutator-func
+                             (funcall mutator-func zeek-log))
+                           (when (or (null filter-func)
+                                     (funcall filter-func zeek-log))
+                             (write-zeek-log-line zeek-log out output-format))
+                      do (next-record zeek-log))))
+            (when (eq output-format :zeek)
+              (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
+                      (timestamp-to-zeek-open-close-string (local-time:now))))))))))
 
 (defun cat-logs-string-multi (output-file &rest input-files)
   (with-open-file (out output-file :direction :output :if-exists :supersede)
@@ -90,17 +121,20 @@
         (t (cons (update-columns (car form))
                  (update-columns (cdr form))))))
 
-(defun expand-columns (filters &optional columns)
+(defun expand-columns (filters &optional columns full-columns)
   (flet ((extract-columns (form)
-           (remove-duplicates (mapcar #'or-nickname (mapcar #'column->keyword (remove-if-not #'column?
-                                                                                             (ax:flatten form)))))))
-    (let ((new-filters (update-columns filters))
-          (new-columns (extract-columns filters)))
-      (if (or (eq filters t)
-              (and columns
-                   (null (set-exclusive-or columns (union columns new-columns)))))
-          (values new-filters columns)
-          (expand-columns new-filters new-columns)))))
+           (let ((all-columns (remove-if-not #'column? (ax:flatten form))))
+             (values (remove-duplicates (mapcar #'or-nickname (mapcar #'column->keyword all-columns)))
+                     (remove-duplicates (mapcar #'or-nickname (mapcar #'column->keyword
+                                                                      (remove-if-not #'fully-parsed-column? all-columns))))))))
+    (multiple-value-bind (new-columns new-full-columns) (extract-columns filters)
+      (let ((new-filters (update-columns filters)))
+        (if (or (eq filters t)
+                (and columns
+                     ;; We only need to converge on COLUMNS since FULL-COLUMNS is a subset of COLUMNS.
+                     (null (set-exclusive-or columns (union columns new-columns)))))
+            (values new-filters columns full-columns)
+            (expand-columns new-filters (union columns new-columns) (union full-columns new-full-columns)))))))
 
 ;; From https://lispcookbook.github.io/cl-cookbook/error_handling.html#defining-restarts-restart-case
 (defun prompt-new-value (prompt)
@@ -114,13 +148,14 @@
     (restart-case
         (let ((raw-filters (with-input-from-string (in s)
                              (read in nil))))
-          (multiple-value-bind (filters columns) (expand-columns raw-filters)
+          (multiple-value-bind (filters columns full-columns) (expand-columns raw-filters)
             (values (compile nil `(lambda (log) (declare (ignorable log))
                                     (restart-case ,(macroexpand-1 filters)
                                       (drop-line () :report (lambda (stream)
                                                               (format stream "DROP-LINE: \"~a\"" (zeek-line log))) nil)
                                       (keep-line () t))))
                     columns
+                    full-columns
                     filters)))
       (set-new-filter (filter)
         :report "Enter a new filter"
@@ -154,9 +189,10 @@
                    (push 'progn forms))))
           (let* ((raw-mutators (with-input-from-string (in s)
                                  (read-all-progn in))))
-            (multiple-value-bind (mutators columns) (expand-columns (update-setters raw-mutators))
+            (multiple-value-bind (mutators columns full-columns) (expand-columns (update-setters raw-mutators))
               (values (compile nil `(lambda (log) (declare (ignorable log)) ,(macroexpand-1 mutators)))
                       columns
+                      full-columns
                       mutators))))
       (set-new-mutator (mutator)
         :report "Enter a new mutator"
@@ -191,7 +227,13 @@
                              :short-name #\m
                              :long-name "mutator"
                              :initial-value nil
-                             :key :mutator-expr)))
+                             :key :mutator-expr)
+        (clingon:make-option :boolean/true
+                             :description "Debug compiled functions"
+                             :short-name #\d
+                             :long-name "debug-compiled-functions"
+                             :initial-value nil
+                             :key :debug-compiled-functions)))
 
 (defun cat/handler (cmd)
   (in-package :cleek)
@@ -201,7 +243,8 @@
         (output-file (clingon:getopt cmd :output))
         (format (string->keyword (clingon:getopt cmd :format)))
         (filter-expr (clingon:getopt cmd :filter-expr))
-        (mutator-expr (clingon:getopt cmd :mutator-expr)))
+        (mutator-expr (clingon:getopt cmd :mutator-expr))
+        (*debug-compiled-functions* (clingon:getopt cmd :debug-compiled-functions)))
     (init-common-filters-and-mutators)
     (handler-bind ((error (lambda (condition) (invoke-debugger condition))))
       (handler-case
@@ -223,7 +266,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.11.0-dev"
+   :version "0.11.0"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler

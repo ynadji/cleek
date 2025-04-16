@@ -31,14 +31,13 @@
       ;; Check for newly created fields from mutators.
       (ax:when-let ((created-fields (set-difference (zeek-accessed-columns zeek-log) (zeek-fields zeek-log))))
         (setf (zeek-created-fields zeek-log) created-fields
+              ;; TODO: How can I infer the type?
               (zeek-created-types zeek-log) (make-list (length created-fields) :initial-element :string)))
       zeek-log)))
 
 (defun has-field? (zeek-log field)
   (ecase (zeek-format zeek-log)
-    ;; TODO: these are always strings. what about when we want not strings?
     (:zeek (field->idx zeek-log field))
-    ;; TODO: these are always "parsed" from jzon
     (:json (gethash field (zeek-map zeek-log)))))
 
 (defun get-value (zeek-log field &optional fully-parsed?)
@@ -49,10 +48,12 @@
              (if fully-parsed?
                  (parse-zeek-type val (field->type zeek-log field) t)
                  val)))
-    ;; TODO: these are always "parsed" from jzon
-    (:json (gethash field (zeek-map zeek-log)))))
+    (:json (if fully-parsed?
+               (zeekify-json-type (gethash field (zeek-map zeek-log)) (field->type zeek-log field))
+               (gethash field (zeek-map zeek-log))))))
 
 (defun (setf get-value) (new-value zeek-log field &optional fully-parsed?)
+  (declare (ignore fully-parsed?))
   (if (has-field? zeek-log field)
       (prog1 (ecase (zeek-format zeek-log)
                (:zeek (setf (aref (zeek-row-strings zeek-log) (field->idx zeek-log field)) new-value))
@@ -75,8 +76,9 @@
       (:zeek (parse-zeek-header zeek-log))
       (:json (next-record zeek-log) (infer-log-path-fields-types zeek-log)))
     (when (zeek-accessed-columns zeek-log)
+      (ensure-fields->idx zeek-log)
       (ecase (zeek-format zeek-log)
-        (:zeek (ensure-fields->idx zeek-log) (ensure-row-strings zeek-log))
+        (:zeek (ensure-row-strings zeek-log))
         (:json (ensure-map zeek-log))))
     zeek-log))
 

@@ -17,7 +17,9 @@
                 #:tld
                 #:c?
                 #:f
-                #:anno)
+                #:anno
+                #:s=
+                #:s/=)
   (:import-from #:cl-interpol
                 #:enable-interpol-syntax)
   (:export #:tests))
@@ -180,8 +182,10 @@
            (is (zeek-log= zeek json))))
 
 (test filters
-  (enable-ip-syntax)           ; needed to add this or the #I()s were failing...
+  (enable-ip-syntax)                    ; needed to add this or the #I()s were failing...
   (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory)))
+        (dns-log (merge-pathnames "zeek/dns.log" *test-inputs-dir*))
+        (dns-log-json (merge-pathnames "json/dns.log" *test-inputs-dir*))
         (ssh-log (merge-pathnames "zeek/ssh.log" *test-inputs-dir*))
         (ssh-log-json (merge-pathnames "json/ssh.log" *test-inputs-dir*))
         (conn-log (merge-pathnames "zeek/conn.log" *test-inputs-dir*))
@@ -204,27 +208,71 @@
     (is (= 1 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
-    (cat-logs-string test-output :zeek nil "(and (member @conn_state '(\"SF\" \"SHR\") :test 'equal) 
-                                             (string= @proto \"tcp\") 
-                                             (or (plusp (parse-integer @orig_bytes)) 
-                                                 (plusp (parse-integer @resp_bytes))))" conn-log)
+    (cat-logs-string test-output :zeek nil "(and (c? '(\"SF\" \"SHR\") @conn_state)
+                                             (string= @proto \"tcp\")
+                                             (or (plusp @@orig_bytes)
+                                                 (plusp @@resp_bytes)))" conn-log)
     (is (= 7 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
     ;; NB: because of how JSON is parsed, the bytes fields are already integers.
-    (cat-logs-string test-output :json nil "(and (member @conn_state '(\"SF\" \"SHR\") :test 'equal) 
-                                             (string= @proto \"tcp\") 
-                                             (or (plusp @orig_bytes) 
+    (cat-logs-string test-output :json nil "(and (c? '(\"SF\" \"SHR\") @conn_state)
+                                             (string= @proto \"tcp\")
+                                             (or (plusp @orig_bytes)
                                                  (plusp @resp_bytes)))" conn-log-json)
     (is (= 7 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
-    ;; TODO: Add JSON if you figure out how to unify the expectations.
+    ;; Using the fully parsed @@ syntax also works for JSON, however.
+    (cat-logs-string test-output :json nil "(and (c? '(\"SF\" \"SHR\") @conn_state)
+                                             (string= @proto \"tcp\")
+                                             (or (plusp @@orig_bytes)
+                                                 (plusp @@resp_bytes)))" conn-log-json)
+    (is (= 7 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :zeek nil "(c? @@answers \"54.204.130.107\")" dns-log)
+    (is (= 2 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :json nil "(c? @@answers \"54.204.130.107\")" dns-log-json)
+    (is (= 2 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :zeek nil "@@ra" dns-log)
+    (is (= 11 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :json nil "@@ra" dns-log-json)
+    (is (= 11 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
     (let ((cleek::*common-filters-and-mutators-path* (asdf:system-relative-pathname "cleek" "common-filters-and-mutators.lisp")))
       (cleek::init-common-filters-and-mutators)
       ;; We need to specify CLEEK:: only because we are calling from a different package.
       (cat-logs-string test-output :zeek nil "(and (string= @proto \"tcp\") cleek::productive?)" conn-log)
       (is (= 150 (count-rows test-output)))
-      (uiop:delete-file-if-exists test-output))))
+      (uiop:delete-file-if-exists test-output)
+
+      (cat-logs-string test-output :json nil "(and (string= @proto \"tcp\") cleek::productive?)" conn-log-json)
+      (is (= 150 (count-rows test-output)))
+      (uiop:delete-file-if-exists test-output)
+
+      (cat-logs-string test-output :zeek nil "(and (<= @@r_p 1024)
+                                                   (s/= @proto \"icmp\")
+                                                   cleek::productive?
+                                                   (public? @@o_h)
+                                                   (private? @@r_h))" conn-log)
+      (is (= 1 (count-rows test-output)))
+      (uiop:delete-file-if-exists test-output)
+
+      (cat-logs-string test-output :json nil "(and (<= @@r_p 1024)
+                                                   (s/= @proto \"icmp\")
+                                                   cleek::productive?
+                                                   (public? @@o_h)
+                                                   (private? @@r_h))" conn-log-json)
+      (is (= 1 (count-rows test-output)))
+      (uiop:delete-file-if-exists test-output)
+      )))
 
 (defmacro with-tmp-file ((var string) &body body)
   `(uiop:with-temporary-file (:pathname ,var)
@@ -251,14 +299,22 @@
     (is (= 6 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
-    (cat-logs-string test-output :json "(setf @total_bytes (+ (or @orig_bytes 0)
-                                                              (or @resp_bytes 0)))"
+    (cat-logs-string test-output :json "(setf @total_bytes (+ @@orig_bytes @@resp_bytes))"
                      "(and (= 1 @total_bytes) (string= @proto \"tcp\"))" conn-log-json)
     (is (= 46 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
-    (cat-logs-string test-output :json "(setf @total_bytes (+ (or @orig_bytes 0)
-                                                              (or @resp_bytes 0)))"
+    (cat-logs-string test-output :json "(setf @total_bytes (+ (or @orig_bytes 0) (or @resp_bytes 0)))"
+                     "(and (= 1 @total_bytes) (string= @proto \"tcp\"))" conn-log-json)
+    (is (= 46 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :json "(setf @total_bytes (+ @@orig_bytes @@resp_bytes))"
+                     "(and (plusp @total_bytes) (string= @proto \"tcp\"))" conn-log-json)
+    (is (= 224 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :json "(setf @total_bytes (+ (or @orig_bytes 0) (or @resp_bytes 0)))"
                      "(and (plusp @total_bytes) (string= @proto \"tcp\"))" conn-log-json)
     (is (= 224 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
@@ -272,15 +328,12 @@
     (is (= 6 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
-    ;; TODO: Update test when you have fully parsed stuff figured out.
-    (cat-logs-string test-output :zeek "(setf @total_bytes (+ (or (parse-integer @orig_bytes :junk-allowed t) 0)
-                                                              (or (parse-integer @resp_bytes :junk-allowed t) 0)))"
+    (cat-logs-string test-output :zeek "(setf @total_bytes (+ @@orig_bytes @@resp_bytes))"
                      "(and (= 1 @total_bytes) (string= @proto \"tcp\"))" conn-log)
     (is (= 46 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
-    (cat-logs-string test-output :zeek "(setf @total_bytes (+ (or (parse-integer @orig_bytes :junk-allowed t) 0)
-                                                              (or (parse-integer @resp_bytes :junk-allowed t) 0)))"
+    (cat-logs-string test-output :zeek "(setf @total_bytes (+ @@orig_bytes @@resp_bytes))"
                      "(and (plusp @total_bytes) (string= @proto \"tcp\"))" conn-log)
     (is (= 224 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
@@ -304,7 +357,6 @@
                   (t (is (string= label "unknown"))))))))
     (uiop:delete-file-if-exists test-output)
 
-    ;; TODO: Add JSON if you figure out how to unify the expectations.
     (let ((cleek::*common-filters-and-mutators-path* (asdf:system-relative-pathname "cleek" "common-filters-and-mutators.lisp")))
       (cleek::init-common-filters-and-mutators)
       ;; We need to specify CLEEK:: only because we are calling from a different package.

@@ -89,8 +89,8 @@
 (defparameter *json-zeekify*
   `((:bool . ,(lambda (x) (string= x "T")))
     (:time . ,#'double-to-timestamp)
-    (:addr . ,(lambda (x) #I(x)))
-    (:subnet . ,(lambda (x) #I(x)))))
+    (:addr . ,#'na:make-ip-address)
+    (:subnet . ,#'na:make-ip-network)))
 
 (defparameter *zeek-stringify*
   `((:bool . ,(lambda (x) (if x "T" "F")))
@@ -155,15 +155,17 @@
                      (zeek-types zeek-log) types))
     zeek-log))
 
-;; TODO: might be premature optimization, but maybe:
-;; check for unset/empty
-;; check for primitive-type with when-let
-;; then do check for aggregates.
-(defun parse-zeek-type (field type &optional default?)
+;; right now you're mostly (only?) using this to handle @@ from zeek logs. so you don't necessarily need to handle this
+;; in exactly the same way you handle JSON records. hmm well it would be nice if @@ on both formats worked the same. ugh
+;; yeah you need to think about this more. it's fine if @ doesn't work the same, but @@ really should.
+;;
+;; ordering of filters/mutators matters now. currently, filtering happens after mutation (so you can filter based on a
+;; newly created field) but what if we need to filter fields that are going to be fully parsed and used as part of a
+;; mutator? hmm. multiple rounds? interleaving sounds annoying though.
+(defun parse-zeek-type (field type &optional unset-is-nil?)
   (let ((type-string (keyword->string type)))
     ;; unset should probably be 'null and empty should probably be #() (since '() is eq to nil)
-    (cond ((string= field (string *zeek-unset-field*)) (if default? (zeek-primitive-default type)
-                                                           'cl::null))
+    (cond ((string= field (string *zeek-unset-field*)) (if unset-is-nil? nil 'cl::null))
           ((string= field (string *zeek-empty-field*))
            (if (eq type :string) "" #()))
           ((or (str:starts-with? "set" type-string)
@@ -176,7 +178,7 @@
 
 (defun unparse-zeek-type (field type)
   (let ((type-string (keyword->string type)))
-    (cond ((eq 'cl:null field) "-")
+    (cond ((eq 'cl:null field) "-") ;; 
           ((stringp field)
            field)
           ((or (str:starts-with? "set" type-string)
