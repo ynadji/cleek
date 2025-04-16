@@ -108,7 +108,5 @@
 (defun productive? (zeek-log)
   (declare (ignore zeek-log)))
 
-;; this might be faster as a macro, since you (might?) get the benefits of the
-;; scanner caching for free.
-(defmacro ~ (field regex)
+(defmacro ~ (regex field)
   `(cl-ppcre:scan ,regex ,field))

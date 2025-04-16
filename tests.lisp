@@ -19,7 +19,8 @@
                 #:f
                 #:anno
                 #:s=
-                #:s/=)
+                #:s/=
+                #:~)
   (:import-from #:cl-interpol
                 #:enable-interpol-syntax)
   (:export #:tests))
@@ -141,14 +142,11 @@
   (labels ((fields-equal (zl1 zl2 &optional ignore-columns)
              (loop for field in (cleek::zeek-fields zl1)
                    for type in (cleek::zeek-types zl1)
-                   ;;do (format t "~a = ~a ? " (gethash field (cleek::zeek-map zl1) 'cl::null) (gethash field (cleek::zeek-map zl2) 'cl::null))
                    always (or (member field ignore-columns)
                               (let ((foo (field= (gethash field (cleek::zeek-map zl1) 'cl::null)
                                                  (gethash field (cleek::zeek-map zl2) 'cl::null))))
                                 (unless foo (format t "~a vs. ~a~%~a = ~a ? FALSE~%" path1 path2 (gethash field (cleek::zeek-map zl1) 'cl::null) (gethash field (cleek::zeek-map zl2) 'cl::null)))
-                                foo))
-                   ;;do (terpri)
-                   )))
+                                foo)))))
     (cleek::with-zeek-log (zl1 path1)
       (cleek::with-zeek-log (zl2 path2)
         (and (= (count-rows path1) (count-rows path2))
@@ -182,7 +180,8 @@
            (is (zeek-log= zeek json))))
 
 (test filters
-  (enable-ip-syntax)                    ; needed to add this or the #I()s were failing...
+  (enable-ip-syntax)
+  (enable-interpol-syntax)
   (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory)))
         (dns-log (merge-pathnames "zeek/dns.log" *test-inputs-dir*))
         (dns-log-json (merge-pathnames "json/dns.log" *test-inputs-dir*))
@@ -193,6 +192,27 @@
 
     (is (= 2 (count-rows ssh-log) (count-rows ssh-log-json)))
     (is (= 481 (count-rows conn-log) (count-rows conn-log-json)))
+
+    ;; Regex match against the LINE on anything.
+    (cat-logs-string test-output :zeek nil "(~ #?/.*/ LINE)" conn-log)
+    (is (= 481 (count-rows test-output)))
+    (is (zeek-log= test-output conn-log))
+    (uiop:delete-file-if-exists test-output)
+    (cat-logs-string test-output :json nil "(~ #?/.*/ LINE)" conn-log-json)
+    (is (= 481 (count-rows test-output)))
+    (is (zeek-log= test-output conn-log-json))
+    (uiop:delete-file-if-exists test-output)
+
+    ;; In the CLI, you could use the CL-INTERPOL syntax for this regex that would look like: #?/tcp.*?SF\s\w/
+    ;; but passing a string will interfere with the escaping so we use the double escapes from now one.
+    (cat-logs-string test-output :zeek nil "(~ \"tcp.*?SF\\\\s\\\\w\" LINE)" conn-log)
+    (is (= 15 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+    ;; Note that LINE in :json is still a JSON blob and not the same as a :zeek line. This filter is largely equivalent
+    ;; to the one for :zeek. Same regex in sane form is #?/tcp.*?SF",/
+    (cat-logs-string test-output :json nil "(~ \"tcp.*?SF\\\",\" LINE)" conn-log-json)
+    (is (= 15 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
 
     (cat-logs-string test-output :zeek nil "(string= @direction \"INBOUND\")" ssh-log)
     (is (= 1 (count-rows test-output)))
