@@ -32,7 +32,11 @@
   (when full-columns
     (let ((filters (cons 'and (mapcar (lambda (c) `(get-value log ,(or-nickname c) t)) full-columns))))
       (values (compile nil `(lambda (log) (declare (ignorable log))
-                              ,filters))
+                              ;; duplication of filter RESTART-CASE is a bit annoying.
+                              (restart-case ,filters
+                                (drop-line () :report (lambda (stream)
+                                                        (format stream "DROP-LINE: \"~a\"" (zeek-line log))) nil)
+                                (keep-line () t))))
               filters))))
 
 (defun cat-logs-string (output-file output-format mutator-expr filter-expr &rest input-files)
