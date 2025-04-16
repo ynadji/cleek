@@ -42,9 +42,9 @@
           (ensure-fully-parsed-non-nil-func (union mutator-full-columns filter-full-columns))
         (let ((columns (union mutator-columns filter-columns)))
           (when *debug-compiled-functions*
-            (format t "# fully parsed column filter~%~a~%" ensure-filters)
-            (format t "~%# mutators~%~a~%" mutators)
-            (format t "~%# filters~%~a~%" filters)
+            (format t "# fully parsed column filter~%~s~%" ensure-filters)
+            (format t "~%# mutators~%~s~%" mutators)
+            (format t "~%# filters~%~s~%" filters)
             (return-from cat-logs-string))
           (with-open-file (out output-file :direction :output :if-exists :supersede)
             (when (zerop (length input-files))
