@@ -360,7 +360,7 @@
     (let ((cleek::*common-filters-and-mutators-path* (asdf:system-relative-pathname "cleek" "common-filters-and-mutators.lisp")))
       (cleek::init-common-filters-and-mutators)
       ;; We need to specify CLEEK:: only because we are calling from a different package.
-      (cat-logs-string test-output :zeek "cleek::domain-parts" "(or (string= @query_tld \"net\") (string= @query_e2ld \"slack.com\"))" dns-log)
+      (cat-logs-string test-output :zeek "cleek::domain-parts" "(or (string= @query_tld \"akamaiedge.net\") (string= @query_e2ld \"slack.com\"))" dns-log)
       (is (= 6 (count-rows test-output)))
       (uiop:delete-file-if-exists test-output))))
 

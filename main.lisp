@@ -284,7 +284,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.11.1-dev"
+   :version "0.11.2-dev"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
