@@ -121,15 +121,33 @@
         (t (cons (update-columns (car form))
                  (update-columns (cdr form))))))
 
+(define-condition runtime-expression-has-no-columns (error)
+  ((expression :initarg :expression
+               :initform nil
+               :reader expression))
+  (:documentation "Runtime filter or mutator does not contain any @columns or LINE."))
+
+;; messy but it works
 (defun expand-columns (filters &optional columns full-columns)
   (flet ((extract-columns (form)
            (let ((all-columns (remove-if-not #'column? (ax:flatten form))))
              (values (remove-duplicates (mapcar #'or-nickname (mapcar #'column->keyword all-columns)))
                      (remove-duplicates (mapcar #'or-nickname (mapcar #'column->keyword
-                                                                      (remove-if-not #'fully-parsed-column? all-columns))))))))
+                                                                      (remove-if-not #'fully-parsed-column? all-columns)))))))
+         (has-line? (form)
+           (and (consp form)
+                (or (member 'line form)
+                    (member '(zeek-line log) form :test #'equal)))))
     (multiple-value-bind (new-columns new-full-columns) (extract-columns filters)
       (let ((new-filters (update-columns filters)))
-        (if (or (eq filters t)
+        ;; If we did not see any columns in the first expansion and
+        (when (and (null (or columns full-columns new-columns new-full-columns))
+                   ;; we did not see any on the next round (to accomodate for COMMON-FILTERS-AND-MUTATORS, then the
+                   ;; provided form does not contain any columns.
+                   (null (extract-columns new-filters))
+                   (not (or (has-line? filters) (has-line? new-filters))))
+          (error 'runtime-expression-has-no-columns :expression filters))
+        (if (or (has-line? filters)
                 (and columns
                      ;; We only need to converge on COLUMNS since FULL-COLUMNS is a subset of COLUMNS.
                      (null (set-exclusive-or columns (union columns new-columns)))))
@@ -266,7 +284,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.11.0"
+   :version "0.11.1-dev"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
