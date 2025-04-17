@@ -1,8 +1,6 @@
 (in-package :cleek)
 
 ;; TODOs:
-;; * timestamp filtering maybe t< t> t<= t>=? handle the conversion with generic functions?
-;;   yeah just have aliases and an alias for LOCAL-TIME:PARSE-TIMESTRING and you should be good.
 ;; * suite for performance testing so you can optimize things more easily.
 ;; * "learn" new zeek log formats. this honestly isn't super important since you're mostly working with :zeek logs.
 ;; * JIT optimize three sets of compiled functions: essentially make commonly used columns are extracted once and shared
@@ -288,7 +286,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.11.3"
+   :version "0.12.0"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler

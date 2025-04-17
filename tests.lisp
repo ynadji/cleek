@@ -20,7 +20,10 @@
                 #:anno
                 #:s=
                 #:s/=
-                #:~)
+                #:~
+                #:ts
+                #:ts<=
+                #:ts<)
   (:import-from #:cl-interpol
                 #:enable-interpol-syntax)
   (:export #:tests))
@@ -264,6 +267,15 @@
 
     (cat-logs-string test-output :json nil "@@ra" dns-log-json)
     (is (= 11 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    ;; Can specify timestamps with unix epoch ts, epoch w/ nsec, or ISO 8601 format (default from zeek-cut -d.
+    (cat-logs-string test-output :zeek nil "(ts<= (ts 1623187713) @@ts (ts 1623187714))" conn-log)
+    (is (= 6 (count-rows test-output)))
+    (cat-logs-string test-output :zeek nil "(ts<= (ts 1623187713.511287) @@ts (ts 1623187714.507970))" conn-log)
+    (is (= 6 (count-rows test-output)))
+    (cat-logs-string test-output :zeek nil "(ts< (ts \"2021-06-08T17:28:33-0400\") @@ts (ts \"2021-06-08T17:28:35-0400\"))" conn-log)
+    (is (= 13 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
     (let ((cleek::*common-filters-and-mutators-path* (asdf:system-relative-pathname "cleek" "common-filters-and-mutators.lisp")))

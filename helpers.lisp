@@ -22,14 +22,8 @@
     (str:contains? substring x)))
 (serapeum:defalias c? #'contains?)
 
-;; starts-with?, starts?
-;;; only makes sense for strings, no?
-;; ends-with?, ends?
-;;; only makes sense for strings, no?
-
 (serapeum:defalias s= #'string=)
 (serapeum:defalias s/= #'string/=)
-;;; you could shadow = from CL-USER and do the same kind of dispatch.
 
 (defun f (path &optional (type :str) (max-vector-size 7))
   (let ((lines (uiop:read-file-lines path)))
@@ -41,6 +35,20 @@
                                        :test #'equal :size len))))
       (:ip (na:make-ip-set (mapcar #'na::make-ip-like lines)))
       (:dns (apply #'cl-dns:make-trie lines)))))
+
+;; basically what you want but you need to figure out the timezone bits.
+(defgeneric ts (ts)
+  (:method ((timestring string))
+    (local-time:parse-timestring timestring))
+  (:method ((ts real))
+    (double-to-timestamp ts)))
+
+(serapeum:defalias ts< #'local-time:timestamp<)
+(serapeum:defalias ts<= #'local-time:timestamp<=)
+(serapeum:defalias ts> #'local-time:timestamp>)
+(serapeum:defalias ts>= #'local-time:timestamp>=)
+(serapeum:defalias ts= #'local-time:timestamp=)
+(serapeum:defalias ts/= #'local-time:timestamp/=)
 
 (defmacro anno (field &rest containers-and-labels)
   `(cond ,@(loop for (container label) on containers-and-labels by #'cddr
