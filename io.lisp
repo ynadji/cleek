@@ -193,9 +193,12 @@
              do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)
                       (zeek-status zeek-log) :zeek-map)))
       (:json
-       (clrhash (zeek-map zeek-log))
-       (setf (zeek-map zeek-log) (jzon:parse (zeek-line zeek-log) :key-fn #'string->keyword)
-             (zeek-status zeek-log) :jzon-map)))))
+       (restart-case (progn (clrhash (zeek-map zeek-log))
+                            (setf (zeek-map zeek-log) (jzon:parse (zeek-line zeek-log) :key-fn #'string->keyword)
+                                  (zeek-status zeek-log) :jzon-map))
+         (drop-line () :report (lambda (stream)
+                                 (format stream "DROP-LINE: \"~a\"" (zeek-line zeek-log))) nil)
+         (keep-line () t))))))
 
 (defun ensure-zeek-map (zeek-log)
   (when (member (zeek-status zeek-log) '(:unparsed :row-strings))

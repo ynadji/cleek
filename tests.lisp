@@ -438,3 +438,19 @@ six
 seven
 eight")
       (is (typep (f #?"${foo}") 'hash-table)))))
+
+(test error-handling
+  (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory)))
+        (bad-ssh (merge-pathnames "aux/bad-ssh.log" *test-inputs-dir*))
+        (bad-ssh-json (merge-pathnames "aux/bad-ssh-json.log" *test-inputs-dir*)))
+    (handler-bind ((error (lambda (c)
+                            (declare (ignore c))
+                            (invoke-restart 'cleek::drop-line))))
+      (cat-logs-string test-output :zeek nil "(= @@r_p 22)" bad-ssh)
+      (is (= 3 (count-rows test-output))))
+
+    (handler-bind ((error (lambda (c)
+                            (declare (ignore c))
+                            (invoke-restart 'cleek::drop-line))))
+      (cat-logs-string test-output :json nil "(= @@r_p 22)" bad-ssh-json)
+      (is (= 3 (count-rows test-output))))))
