@@ -112,9 +112,5 @@
 
 ;; is there a reasonable way to anonymize domains?
 
-;; probably need to replace the symbol with a call to (PRODUCTIVE? LOG) in main.
-(defun productive? (zeek-log)
-  (declare (ignore zeek-log)))
-
 (defmacro ~ (regex field)
   `(cl-ppcre:scan ,regex ,field))
