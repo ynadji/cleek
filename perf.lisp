@@ -79,6 +79,8 @@
 (let ((*common-filters-and-mutators-path* (asdf:system-relative-pathname "cleek" "common-filters-and-mutators.lisp")))
   (init-common-filters-and-mutators))
 
+(na:enable-ip-syntax)
+
 (defparameter *filters*
   `(("nil" nil nil)
     ("one-match-str-contains" nil "(c? \"CnekyC2HjFQJ61lUM\" LINE)")
@@ -106,7 +108,11 @@
                                          (not @@local_orig)
                                          (not (minusp @orig_names_length))
                                          (= 1 @resp_names_length)
-                                         (not (c? @@id.resp_h_name.vals \"-\")))")))
+                                         (not (c? @@id.resp_h_name.vals \"-\")))")
+    ("label-ips" "(setf @o_status (anno @@o_h #.#I(\"10.0.69.0/24\") \"jahannam\" #.#I(\"10.20.40.0/24\") \"lower\" #.#I(\"10.20.41.0/24\") \"upper\" t \"not-local\") @r_status (anno @@r_h #.#I(\"10.0.69.0/24\") \"jahannam\" #.#I(\"10.20.40.0/24\") \"lower\" #.#I(\"10.20.41.0/24\") \"upper\" t \"not-local\"))"
+                 nil)
+    ("label-ips-and-filter" "(setf @o_status (anno @@o_h #.#I(\"10.0.69.0/24\") \"jahannam\" #.#I(\"10.20.40.0/24\") \"lower\" #.#I(\"10.20.41.0/24\") \"upper\" t \"not-local\") @r_status (anno @@r_h #.#I(\"10.0.69.0/24\") \"jahannam\" #.#I(\"10.20.40.0/24\") \"lower\" #.#I(\"10.20.41.0/24\") \"upper\" t \"not-local\"))"
+                            "(or (s= @o_status \"jahannam\") (s= @r_status \"jahannam\"))")))
 
 
 (defun run-perf-test (input-log output-format name mutator-expr filter-expr csv-stream &optional profile? (n 3))
@@ -121,6 +127,7 @@
                         (cat-logs-string #P"perf.log" output-format mutator-expr filter-expr input-log))))))
 
 (defun run-all-perf-tests (output-path)
+  (na:enable-ip-syntax)
   (with-open-file (stream output-path :direction :output :if-exists :supersede)
     (format stream "test-name,real-time,user-time,system-time,gc-real-time,non-gc-real-time,bytes-consed~%")
     (loop for (name mutator-expr filter-expr) in *filters*
