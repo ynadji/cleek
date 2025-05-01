@@ -23,7 +23,9 @@
                 #:~
                 #:ts
                 #:ts<=
-                #:ts<)
+                #:ts<
+                #:anonip
+                #:hash)
   (:import-from #:cl-interpol
                 #:enable-interpol-syntax)
   (:export #:tests))
@@ -146,10 +148,8 @@
              (loop for field in (cleek::zeek-fields zl1)
                    for type in (cleek::zeek-types zl1)
                    always (or (member field ignore-columns)
-                              (let ((foo (field= (gethash field (cleek::zeek-map zl1) 'cl::null)
-                                                 (gethash field (cleek::zeek-map zl2) 'cl::null))))
-                                (unless foo (format t "~a vs. ~a~%~a = ~a ? FALSE~%" path1 path2 (gethash field (cleek::zeek-map zl1) 'cl::null) (gethash field (cleek::zeek-map zl2) 'cl::null)))
-                                foo)))))
+                              (field= (gethash field (cleek::zeek-map zl1) 'cl::null)
+                                      (gethash field (cleek::zeek-map zl2) 'cl::null))))))
     (cleek::with-zeek-log (zl1 path1)
       (cleek::with-zeek-log (zl2 path2)
         (and (= (count-rows path1) (count-rows path2))
@@ -322,6 +322,15 @@
     (is (= 25 (count-rows dns-log) (count-rows dns-log-json)))
     (is (= 481 (count-rows conn-log) (count-rows conn-log-json)))
 
+    (cat-logs-string test-output :json "(anonip! @o_h) (hash! @uid)" nil dns-log-json)
+    (is (= 25 (count-rows test-output)))
+    (is (not (zeek-log= dns-log-json test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :json "(anonip! @o_h @r_h) (hash! @uid @proto)" nil dns-log-json)
+    (is (= 25 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
     (cat-logs-string test-output :json "(setf @e2ld (e2ld @query)
                                               @tld (tld @query))" "(string= @tld \"com\")" dns-log-json)
     (is (= 15 (count-rows test-output)))
@@ -349,6 +358,15 @@
     (cat-logs-string test-output :json "(setf @total_bytes (+ (or @orig_bytes 0) (or @resp_bytes 0)))"
                      "(and (plusp @total_bytes) (string= @proto \"tcp\"))" conn-log-json)
     (is (= 224 (count-rows test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :zeek "(anonip! @o_h) (hash! @uid)" nil dns-log)
+    (is (= 25 (count-rows test-output)))
+    (is (not (zeek-log= dns-log-json test-output)))
+    (uiop:delete-file-if-exists test-output)
+
+    (cat-logs-string test-output :zeek "(anonip! @o_h @r_h) (hash! @uid @proto)" nil dns-log)
+    (is (= 25 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
     (cat-logs-string test-output :zeek "(setf @e2ld (e2ld @query)

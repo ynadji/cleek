@@ -186,13 +186,20 @@
         nil))))
 
 (defun update-setters (form)
+  "Turns a form of a unary function call where the name is suffixed by a ! into a series of SETFs where the column is changed to the return value of the function call. e.g.,
+
+CLEEK> (update-setters '(anonip! @o_h @r_h))
+(SETF @O_H (ANONIP @O_H)
+      @R_H (ANONIP @R_H))
+
+Primarily used anonymize IPs and hash fields with ANONIP and HASH."
   (flet ((setter? (fun)
            (and (symbolp fun) (str:ends-with? "!" (symbol-name fun))))
          (fun-name-from-setter (setter)
            (let ((s (symbol-name setter)))
              (intern (str:substring 0 (1- (length s)) s)))))
     (cond ((and (consp form) (setter? (car form)))
-           `(setf ,(cadr form) (,(fun-name-from-setter (car form)) ,@(rest form))))
+           `(setf ,@(loop for field in (cdr form) append `(,field (,(fun-name-from-setter (car form)) ,field)))))
           ((atom form) form)
           (t (cons (update-setters (car form))
                    (update-setters (cdr form)))))))
@@ -286,7 +293,7 @@
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.12.0"
+   :version "0.13.0"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
