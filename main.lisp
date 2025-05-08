@@ -56,7 +56,7 @@
                 (when (eq output-format :input-format)
                   (setf output-format (zeek-format zeek-log)))
                 (write-zeek-header zeek-log out output-format)
-                (loop while (zeek-line zeek-log)
+                (loop while (str:non-empty-string-p (zeek-line zeek-log))
                       when (or (null ensure-truthy-parse-func)
                                (funcall ensure-truthy-parse-func zeek-log))
                         do (when mutator-func
@@ -73,7 +73,7 @@
   (with-open-file (out output-file :direction :output :if-exists :supersede)
     (with-zeek-logs (zeek-log input-files)
       (format out "~{~a~^~%~}~%" (zeek-raw-header zeek-log))
-      (loop while (zeek-line zeek-log)
+      (loop while (str:non-empty-string-p (zeek-line zeek-log))
             do (write-line (zeek-line zeek-log) out)
                (next-record zeek-log)))
     (format out (format nil "#close~a~~a~%" *zeek-field-separator*)

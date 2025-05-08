@@ -6,7 +6,7 @@
   stream
   raw-header
   (compression :none :type keyword)     ; :none :gzip :zstd
-  line
+  (line "" :type (simple-array character (*)))
   types
   fields
   row-strings

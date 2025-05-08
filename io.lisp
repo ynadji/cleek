@@ -84,7 +84,7 @@
 
 (defun next-record (zeek-log)
   ;; TODO: Add condition handling for when the header differs.
-  (progn (setf (zeek-line zeek-log) (read-line (zeek-stream zeek-log) nil)
+  (progn (setf (zeek-line zeek-log) (or (read-line (zeek-stream zeek-log) nil) "")
                (zeek-status zeek-log) :unparsed
                (zeek-modified? zeek-log) nil)
          (cond ((str:starts-with? "#close" (zeek-line zeek-log))
@@ -99,12 +99,12 @@
                   ;; skip empty files that go directly from header to #close.
                   (when (str:starts-with? "#close" (zeek-line zeek-log))
                     (next-record zeek-log)))
-                (when (and (zeek-line zeek-log) (zeek-accessed-columns zeek-log))
+                (when (and (str:non-empty-string-p (zeek-line zeek-log)) (zeek-accessed-columns zeek-log))
                   (ecase (zeek-format zeek-log)
                     (:zeek (ensure-row-strings zeek-log))
                     (:json (ensure-map zeek-log))))
                 zeek-log)
-               (t (when (and (zeek-line zeek-log) (zeek-accessed-columns zeek-log))
+               (t (when (and (str:non-empty-string-p (zeek-line zeek-log)) (zeek-accessed-columns zeek-log))
                     (ecase (zeek-format zeek-log)
                       (:zeek (ensure-row-strings zeek-log))
                       (:json (ensure-map zeek-log))))
@@ -187,7 +187,9 @@
     (ecase (zeek-format zeek-log)
       (:zeek
        (clrhash (zeek-map zeek-log))
-       (loop for field in (split-sequence *zeek-field-separator* (zeek-line zeek-log))
+       (loop for field in (if (eq (zeek-status zeek-log) :row-strings)
+                              (coerce (zeek-row-strings zeek-log) 'list)
+                              (split-sequence *zeek-field-separator* (zeek-line zeek-log)))
              for name in (zeek-fields zeek-log)
              for type in (zeek-types zeek-log)
              do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)
