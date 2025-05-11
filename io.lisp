@@ -87,6 +87,7 @@
   (progn (setf (zeek-line zeek-log) (read-line (zeek-stream zeek-log) nil)
                (zeek-status zeek-log) :unparsed
                (zeek-modified? zeek-log) nil)
+         (clrhash (zeek-map zeek-log))
          (cond ((str:starts-with? "#close" (zeek-line zeek-log))
                 (next-record zeek-log))
                ;; new header
@@ -186,8 +187,9 @@
   (when (member (zeek-status zeek-log) '(:unparsed :row-strings))
     (ecase (zeek-format zeek-log)
       (:zeek
-       (clrhash (zeek-map zeek-log))
-       (loop for field in (split-sequence *zeek-field-separator* (zeek-line zeek-log))
+       (loop for field in (if (eq :unparsed (zeek-status zeek-log))
+                              (split-sequence *zeek-field-separator* (zeek-line zeek-log))
+                              (coerce (zeek-row-strings zeek-log) 'list))
              for name in (zeek-fields zeek-log)
              for type in (zeek-types zeek-log)
              do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)
@@ -275,7 +277,16 @@
                                do (princ field stream)
                                when (< i (length (zeek-created-fields zeek-log)))
                                  do (princ *zeek-field-separator* stream)))
-                       ;; TODO: if there's stuff in ZEEK-MAP, iterate a dump. how do i ensure the order is the same
-                       ;; every time?
                        (terpri stream))))))
-          (t (error "Modified & format change not implemented!")))))
+          (t (ensure-map zeek-log)
+             (ensure-fields zeek-log)
+             (ecase format
+               (:json (jzon:stringify (if (eq (zeek-status zeek-log) :zeek-map)
+                                          (jsonify-zeek-map (zeek-map zeek-log))
+                                          (zeek-map zeek-log)) :stream stream) (terpri stream))
+               (:zeek (if (zeek-types zeek-log)
+                          (format stream (format nil "~~{~~a~~^~C~~}~~%" *zeek-field-separator*)
+                                  (loop for field-name in (zeek-fields zeek-log)
+                                        for type in (zeek-types zeek-log)
+                                        collect (or (stringify-json-type-to-zeek-string (gethash field-name (zeek-map zeek-log) "-") type) "-")))
+                          (error "Couldn't infer zeek log format. Cannot properly build Zeek log header."))))))))
