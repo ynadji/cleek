@@ -329,6 +329,7 @@
 
     (cat-logs-string test-output :json "(anonip! @o_h @r_h) (hash! @uid @proto)" nil dns-log-json)
     (is (= 25 (count-rows test-output)))
+    (is (not (zeek-log= dns-log-json test-output)))
     (uiop:delete-file-if-exists test-output)
 
     (cat-logs-string test-output :json "(setf @e2ld (e2ld @query)
@@ -362,11 +363,12 @@
 
     (cat-logs-string test-output :zeek "(anonip! @o_h) (hash! @uid)" nil dns-log)
     (is (= 25 (count-rows test-output)))
-    (is (not (zeek-log= dns-log-json test-output)))
+    (is (not (zeek-log= dns-log test-output)))
     (uiop:delete-file-if-exists test-output)
 
     (cat-logs-string test-output :zeek "(anonip! @o_h @r_h) (hash! @uid @proto)" nil dns-log)
     (is (= 25 (count-rows test-output)))
+    (is (not (zeek-log= dns-log test-output)))
     (uiop:delete-file-if-exists test-output)
 
     (cat-logs-string test-output :zeek "(setf @e2ld (e2ld @query)
