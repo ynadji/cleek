@@ -293,7 +293,7 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.13.0"
+   :version "0.14.0"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
