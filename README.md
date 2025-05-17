@@ -279,5 +279,5 @@ going to have a bad time.
 [cl-dns](https://github.com/ynadji/cl-dns) and
 [netaddr](https://github.com/ynadji/netaddr). If you currently use [roswell](#)
 you can build with `make`. Otherwise, use `$ lisp-impl --eval "(progn (asdf:make
-:cleek) (quit))"` or the equivalent. `cleek` has only been testing with SBCL on
+:cleek) (quit))"` or the equivalent. `cleek` has only been tested with SBCL on
 ARM macOS and amd64 Linux.
