@@ -6,7 +6,7 @@
 
 (asdf:defsystem cleek
   :serial t
-  :description "DNS manipulation library"
+  :description "A Zeek log manipulation CLI tool."
   :author "Yacin Nadji <yacin@defmacro.cc>"
   :license "MIT"
   :depends-on ("str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns" "com.inuoe.jzon" "local-time" "clingon" "serapeum" "split-sequence" "cl-interpol" "ironclad")

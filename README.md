@@ -248,7 +248,7 @@ See [tests.lisp](./tests.lisp) for more usage examples.
 
 ### Helpers
 
-`cleek` has a handful of helper functions. See [their documentation](https://yacin.nadji.us/netaddr/index.html#PACKAGE%20CLEEK) for
+`cleek` has a handful of helper functions. See [their documentation](https://yacin.nadji.us/cleek/index.html#PACKAGE%20CLEEK) for
 usage. Any unary function defined here can be suffixed with `!` to replace the
 colulmn with the result of applying the function to the column's value. Even
 though the function is unary, with the `!` suffix it can take an arbitrary
