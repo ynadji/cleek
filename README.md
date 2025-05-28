@@ -64,7 +64,7 @@ log aware version of `cat`:
 ```
 
 `cleek` becomes more interesting when _filters_, specified with `-x`, and
-_mutators, `-m`, are provided. A filter argument is a Lisp form that is
+_mutators_, `-m`, are provided. A filter argument is a Lisp form that is
 evaluated against each line of a Zeek log. If it returns a "truthy" value, the
 line is printed, otherwise it is suppressed. A mutator is an implicit PROGN of
 Lisp forms that add or modify columns. Mutators are run before filters. Both
@@ -93,8 +93,9 @@ expression search. `~` takes two arguments: a string or regular expression, and
 #close	2025-05-11-08-35-36
 ```
 
-When using regular expressions, it's recommended to use the [cl-interpol](#)
-syntax to save on backslashes. The following two filters are equvalent:
+When using regular expressions, it's recommended to use the
+[cl-interpol](http://edicl.github.io/cl-interpol/#syntax) syntax to save on
+backslashes. The following two filters are equvalent:
 
 ```
 ~/code/cleek topic/yacin/modified-and-fmt-change*
@@ -127,8 +128,9 @@ syntax to save on backslashes. The following two filters are equvalent:
 If you find yourself using `LINE` a lot, you may want to just use `grep`.
 Accessing columns directly is by far more common. `@colname` does an initial
 parse of the data: to a `string` for TSVs and to a JSON datatype for JSON (see
-[JZON](#jzon) documentation for details). `@@colname` fully parses the column to
-a useful representation based on the Zeek data type:
+[JZON](https://github.com/Zulu-Inuoe/jzon) documentation for details).
+`@@colname` fully parses the column to a useful representation based on the Zeek
+data type:
 
 * `bool` -> `(or t nil)`
 * `count` -> `integer`
@@ -246,7 +248,7 @@ See [tests.lisp](./tests.lisp) for more usage examples.
 
 ### Helpers
 
-`cleek` has a handful of helper functions. See [their documentation](#) for
+`cleek` has a handful of helper functions. See [their documentation](https://yacin.nadji.us/netaddr/index.html#PACKAGE%20CLEEK) for
 usage. Any unary function defined here can be suffixed with `!` to replace the
 colulmn with the result of applying the function to the column's value. Even
 though the function is unary, with the `!` suffix it can take an arbitrary

@@ -1,5 +1,5 @@
 (defpackage cleek/tests
-  (:use #:cl #:cleek #:netaddr)
+  (:use #:cl #:cleek)
   (:import-from #:fiveam
                 #:def-suite
                 #:in-suite
@@ -12,27 +12,14 @@
                 #:parse-zeek-type
                 #:unparse-zeek-type
                 #:cat-logs-string
-                #:string->keyword
-                #:e2ld
-                #:tld
-                #:c?
-                #:f
-                #:anno
-                #:s=
-                #:s/=
-                #:~
-                #:ts
-                #:ts<=
-                #:ts<
-                #:anonip
-                #:hash)
+                #:string->keyword)
   (:import-from #:cl-interpol
                 #:enable-interpol-syntax)
   (:export #:tests))
 
 (in-package :cleek/tests)
 
-(enable-ip-syntax)
+(netaddr:enable-ip-syntax)
 (enable-interpol-syntax)
 
 (def-suite tests)
@@ -64,17 +51,17 @@
   (is (timestamp= (make-timestamp :day 7769 :sec 77304 :nsec 78114)
                   (parse-zeek-type "1623187704.078114" :time)))
 
-  (is (ip= #I("10.20.30.40") (parse-zeek-type "10.20.30.40" :addr)))
-  (is (ip= #I("cafe:babe::") (parse-zeek-type "cafe:babe::" :addr)))
+  (is (netaddr:ip= #I("10.20.30.40") (parse-zeek-type "10.20.30.40" :addr)))
+  (is (netaddr:ip= #I("cafe:babe::") (parse-zeek-type "cafe:babe::" :addr)))
 
-  (is (ip= #I("10.20.30.0/24") (parse-zeek-type "10.20.30.0/24" :subnet)))
-  (is (ip= #I("cafe:babe::/94") (parse-zeek-type "cafe:babe::/94" :subnet)))
+  (is (netaddr:ip= #I("10.20.30.0/24") (parse-zeek-type "10.20.30.0/24" :subnet)))
+  (is (netaddr:ip= #I("cafe:babe::/94") (parse-zeek-type "cafe:babe::/94" :subnet)))
 
-  (is (every #'ip= #I("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :vector[addr])))
-  (is (every #'ip= #I("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :set[addr])))
+  (is (every #'netaddr:ip= #I("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :vector[addr])))
+  (is (every #'netaddr:ip= #I("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :set[addr])))
 
-  (is (every #'ip= #I("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :vector[subnet])))
-  (is (every #'ip= #I("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :set[subnet])))
+  (is (every #'netaddr:ip= #I("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :vector[subnet])))
+  (is (every #'netaddr:ip= #I("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :set[subnet])))
 
   (is (every #'= #(1 217 41) (parse-zeek-type "1,217,41" :vector[count])))
   (is (every #'string= #("google.com" "foo.bar" "bing.bong") (parse-zeek-type "google.com,foo.bar,bing.bong" :set[string]))))
@@ -132,7 +119,7 @@
   (:method ((x local-time:timestamp) (y local-time:timestamp))
     (< (abs (local-time:timestamp-difference x y)) 1))
   (:method ((x netaddr::ip+) (y netaddr::ip+))
-    (ip= x y))
+    (netaddr:ip= x y))
   (:method ((x double-float) (y double-float))
     (<= (abs (- x y)) 0.001))
   ;; This doesn't take into account that Zeek does not mandate an order for set[*] types, except for conn.log as of
@@ -183,7 +170,7 @@
            (is (zeek-log= zeek json))))
 
 (test filters
-  (enable-ip-syntax)
+  (netaddr:enable-ip-syntax)
   (enable-interpol-syntax)
   (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory)))
         (dns-log (merge-pathnames "zeek/dns.log" *test-inputs-dir*))
@@ -312,7 +299,7 @@
      ,@body))
 
 (test mutators
-  (enable-ip-syntax)
+  (netaddr:enable-ip-syntax)
   (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory)))
         (dns-log (merge-pathnames "zeek/dns.log" *test-inputs-dir*))
         (dns-log-json (merge-pathnames "json/dns.log" *test-inputs-dir*))
