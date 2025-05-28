@@ -1,0 +1,235 @@
+<!DOCTYPE html> <html lang="EN"> <head> <meta charset="utf-8"> <title>Cleek</title> <style>html body{margin:0 auto 0 auto;padding:20px;max-width:1024px;font-family:sans-serif;font-size:14pt;overflow-y:scroll;}html body a{text-decoration:none;}html body a[href]{color:#0055AA;}html body a[href]:hover{color:#0088EE;}html body pre{background:#FAFAFA;border:1px solid #DDDDDD;padding:0.75em;overflow-x:auto;}html body pre >code a[href]{color:#223388;}article.project h1{font-size:1.7em;}article.project h1,article.project h2,article.project h3,article.project h4,article.project h5,article.project h6{margin:0.2em 0 0.1em 0;text-indent:1em;}article.project >header{text-align:center;}article.project >header img.logo{display:block;margin:auto;max-height:170px;}article.project >header h1{display:inline-block;text-indent:0;font-size:2.5em;}article.project >header .version{vertical-align:bottom;}article.project >header .languages{margin-top:-0.5em;text-transform:capitalize;}article.project >header .description{margin:0;}article.project >header .pages{margin-top:0.5em;font-size:1.2em;text-transform:capitalize;}article.project >header .pages a{display:inline-block;padding:0 0.2em;}article.project >section{margin:1em 0 1em 0;}article.project >section img{max-width:100%;}article.project #index >ul{list-style:none;margin:0;padding:0;}article.project .row label{display:inline-block;min-width:8em;}article.project #system .row{display:flex;}article.project #system #dependencies{display:inline;margin:0;padding:0;}article.project #system #dependencies li{display:inline;padding:0 0.2em;}article.project #system #author label{vertical-align:top;}article.project #system #author ul{display:inline-block;margin:0;padding:0;list-style:none;}article.definition{margin:1em 0 0 0;}article.definition >header h1,article.definition >header h2,article.definition >header h3,article.definition >header h4,article.definition >header h5,article.definition >header h6{text-indent:0;display:inline-block;}article.definition >header ul{display:inline-block;list-style:none;margin:0;padding:0;}article.definition >header ul li{display:inline-block;padding:0 0.2em 0 0;}article.definition >header .visibility{display:none;}article.definition >header .visibility,article.definition >header .type{text-transform:lowercase;}article.definition >header .source-link{visibility:hidden;float:right;}article.definition >header .source-link:after{visibility:visible;content:"[SRC]";}article.definition .docstring{margin:0 0 0 1em;}article.definition .docstring pre{font-size:0.8em;white-space:pre-wrap;}.definition.package >header ul.nicknames{display:inline-block;list-style:none;margin:0;padding:0 0 0 1em;}.definition.package >header ul.nicknames li{display:inline;}.definition.package >header ul.nicknames:before{content:"(";}.definition.package >header ul.nicknames:after{content:")";}.definition.package ul.definitions{margin:0;list-style:none;padding:0 0 0 0.5em;}.definition.callable >header .name:before,.definition.type >header .name:before{content:"(";font-weight:normal;}.definition.callable >header .arguments:after,.definition.type >header .arguments:after{content:")";}.definition.callable >header .arguments .arguments:before,.definition.type >header .arguments .arguments:before{content:"(";}.definition.callable >header .arguments .argument,.definition.type >header .arguments .argument{padding:0;}.definition.callable >header .arguments .argument.lambda-list-keyword,.definition.type >header .arguments .argument.lambda-list-keyword{color:#991155;}.definition li>mark{background:none;border-left:0.3em solid #0088EE;padding-left:0.3em;display:block;}</style> </head> <body> <article class="project"> <header>   <h1>cleek</h1>   <span class="version"></span>    <p class="description">DNS manipulation library</p>   <nav class="pages"> <a href="index.html">cleek</a>  <a href="cleek/tests/index.html">cleek/tests</a> </nav>  </header> <section id="documentation"><h1 id="cleek"><code>cleek</code></h1> <p><code>cleek</code> is a command line tool for working with Zeek logs. It provides a Lispy
+DSL for filtering and mutating Zeek logs in either TSV or JSON formats, and
+allows converting between the two. It's primary use-case is quick'n'dirty
+processing or data analysis of Zeek logs where you may not have the logs already
+stored in a database or SIEM for easier access.</p> <h2 id="usage">Usage</h2> <pre><code>¡ cleek --help
+NAME:
+  cleek - Concatenate, filter, and convert Zeek logs
+
+USAGE:
+  cleek [ZEEK-LOG]...
+
+OPTIONS:
+      --help                      display usage information and exit
+      --version                   display version and exit
+  -d, --debug-compiled-functions  Debug compiled functions
+  -f, --output-format &lt;CHOICE&gt;    Output format [default: input-format] [choices: zeek, json,
+                                  input-format]
+  -m, --mutator &lt;VALUE&gt;           Mutator expression
+  -o, --output-file &lt;VALUE&gt;       Output file [default: /dev/stdout]
+  -x, --filter &lt;VALUE&gt;            Filter expression</code></pre> <p><code><a href="#PACKAGE%20CLEEK" class="xref">cleek</a></code> reads plain text Zeek logs from a file (or <code>STDIN</code>) and writes them back
+to <code>STDOUT</code>. If no filters or mutators are provided, <code><a href="#PACKAGE%20CLEEK" class="xref">cleek</a></code> behaves like a Zeek
+log aware version of <code>cat</code>:</p> <pre><code>~/code/cleek topic/yacin/modified-and-fmt-change*
+¡ cat data/test-input/zeek/ssh.log 
+#separator \x09
+#set_separator  ,
+#empty_field    (empty)
+#unset_field    -
+#path   ssh
+#open   2025-04-01-09-50-28
+#fields ts  uid id.orig_h   id.orig_p   id.resp_h   id.resp_p   version auth_success    auth_attempts   direction   client  server  cipher_alg  mac_alg compression_alg kex_alg host_key_alg    host_key
+#types  time    string  addr    port    addr    port    count   bool    count   enum    string  string  string  string  string  string  string  string
+1623187704.078114   C4KEFY1wBmfzxmr0T9  140.249.20.119  48610   192.168.1.145   22  2   -   0   INBOUND SSH-2.0-libssh-0.6.3    SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2 aes256-ctr  hmac-sha1   none    curve25519-sha256@libssh.org    ecdsa-sha2-nistp256 a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+1623187704.078275   ClzWtFaN2gWsP5wNb   140.249.20.119  48610   71.127.52.28    22  2   -   0   -   SSH-2.0-libssh-0.6.3    SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2 aes256-ctr  hmac-sha1   none    curve25519-sha256@libssh.org    ecdsa-sha2-nistp256 a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+#close  2025-04-01-09-50-28
+
+~/code/cleek topic/yacin/modified-and-fmt-change*
+¡ cat data/test-input/zeek/ssh.log data/test-input/zeek/ssh.log | cleek
+#separator \x09
+#set_separator  ,
+#empty_field    (empty)
+#unset_field    -
+#path   ssh
+#open   2025-04-01-09-50-28
+#fields ts  uid id.orig_h   id.orig_p   id.resp_h   id.resp_p   version auth_success    auth_attempts   direction   client  server  cipher_alg  mac_alg compression_alg kex_alg host_key_alg    host_key
+#types  time    string  addr    port    addr    port    count   bool    count   enum    string  string  string  string  string  string  string  string
+1623187704.078114   C4KEFY1wBmfzxmr0T9  140.249.20.119  48610   192.168.1.145   22  2   -   0   INBOUND SSH-2.0-libssh-0.6.3    SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2 aes256-ctr  hmac-sha1   none    curve25519-sha256@libssh.org    ecdsa-sha2-nistp256 a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+1623187704.078275   ClzWtFaN2gWsP5wNb   140.249.20.119  48610   71.127.52.28    22  2   -   0   -   SSH-2.0-libssh-0.6.3    SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2 aes256-ctr  hmac-sha1   none    curve25519-sha256@libssh.org    ecdsa-sha2-nistp256 a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+1623187704.078114   C4KEFY1wBmfzxmr0T9  140.249.20.119  48610   192.168.1.145   22  2   -   0   INBOUND SSH-2.0-libssh-0.6.3    SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2 aes256-ctr  hmac-sha1   none    curve25519-sha256@libssh.org    ecdsa-sha2-nistp256 a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+1623187704.078275   ClzWtFaN2gWsP5wNb   140.249.20.119  48610   71.127.52.28    22  2   -   0   -   SSH-2.0-libssh-0.6.3    SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2 aes256-ctr  hmac-sha1   none    curve25519-sha256@libssh.org    ecdsa-sha2-nistp256 a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+#close  2025-05-11-08-10-00</code></pre> <p><code><a href="#PACKAGE%20CLEEK" class="xref">cleek</a></code> becomes more interesting when <em>filters</em>, specified with <code>-x</code>, and <em>mutators</em>, <code>-m</code>, are provided. A filter argument is a Lisp form that is
+evaluated against each line of a Zeek log. If it returns a &quot;truthy&quot; value, the
+line is printed, otherwise it is suppressed. A mutator is an implicit PROGN of
+Lisp forms that add or modify columns. Mutators are run before filters. Both
+require references to columns from the data to be meaningful, which are denoted
+by <code>@colname</code> or <code>@@colname</code>, or references to the whole line represented by the
+special symbol <code>LINE</code>.</p> <h3 id="filters">Filters</h3> <p>The most common function to use with <code>LINE</code> is <code><a href="#MACRO-FUNCTION%20CLEEK%3A~" class="xref">~</a></code>, which is a regular
+expression search. <code><a href="#MACRO-FUNCTION%20CLEEK%3A~" class="xref">~</a></code> takes two arguments: a string or regular expression, and <code>LINE</code> or the column you're matching against.</p> <pre><code>~/code/cleek topic/yacin/modified-and-fmt-change*
+¡ cat data/test-input/zeek/ssh.log | cleek -x '(~ &quot;INBOUND&quot; LINE)'
+#separator \x09
+#set_separator  ,
+#empty_field    (empty)
+#unset_field    -
+#path   ssh
+#open   2025-04-01-09-50-28
+#fields ts  uid id.orig_h   id.orig_p   id.resp_h   id.resp_p   version auth_success    auth_attempts   direction   client  server  cipher_alg  mac_alg compression_alg kex_alg host_key_alg    host_key
+#types  time    string  addr    port    addr    port    count   bool    count   enum    string  string  string  string  string  string  string  string
+1623187704.078114   C4KEFY1wBmfzxmr0T9  140.249.20.119  48610   192.168.1.145   22  2   -   0   INBOUND SSH-2.0-libssh-0.6.3    SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2 aes256-ctr  hmac-sha1   none    curve25519-sha256@libssh.org    ecdsa-sha2-nistp256 a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+#close  2025-05-11-08-35-36</code></pre> <p>When using regular expressions, it's recommended to use the <a href="http://edicl.github.io/cl-interpol/#syntax">cl-interpol</a> syntax to save on
+backslashes. The following two filters are equvalent:</p> <pre><code>~/code/cleek topic/yacin/modified-and-fmt-change*
+¡ cat data/test-input/zeek/ssh.log | cleek -x '(~ #?/140\..*?\s+\d+\s+71\.127/ LINE)'
+#separator \x09
+#set_separator  ,
+#empty_field    (empty)
+#unset_field    -
+#path   ssh
+#open   2025-04-01-09-50-28
+#fields ts  uid id.orig_h   id.orig_p   id.resp_h   id.resp_p   version auth_success    auth_attempts   direction   client  server  cipher_alg  mac_alg compression_alg kex_alg host_key_alg    host_key
+#types  time    string  addr    port    addr    port    count   bool    count   enum    string  string  string  string  string  string  string  string
+1623187704.078275   ClzWtFaN2gWsP5wNb   140.249.20.119  48610   71.127.52.28    22  2   -   0   -   SSH-2.0-libssh-0.6.3    SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2 aes256-ctr  hmac-sha1   none    curve25519-sha256@libssh.org    ecdsa-sha2-nistp256 a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+#close  2025-05-11-08-39-49
+
+~/code/cleek topic/yacin/modified-and-fmt-change*
+¡ cat data/test-input/zeek/ssh.log | cleek -x '(~ &quot;140\\..*?\\s+\\d+\\s+71\\.127&quot; LINE)'
+#separator \x09
+#set_separator  ,
+#empty_field    (empty)
+#unset_field    -
+#path   ssh
+#open   2025-04-01-09-50-28
+#fields ts  uid id.orig_h   id.orig_p   id.resp_h   id.resp_p   version auth_success    auth_attempts   direction   client  server  cipher_alg  mac_alg compression_alg kex_alg host_key_alg    host_key
+#types  time    string  addr    port    addr    port    count   bool    count   enum    string  string  string  string  string  string  string  string
+1623187704.078275   ClzWtFaN2gWsP5wNb   140.249.20.119  48610   71.127.52.28    22  2   -   0   -   SSH-2.0-libssh-0.6.3    SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2 aes256-ctr  hmac-sha1   none    curve25519-sha256@libssh.org    ecdsa-sha2-nistp256 a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+#close  2025-05-11-08-40-11</code></pre> <p>If you find yourself using <code>LINE</code> a lot, you may want to just use <code>grep</code>.
+Accessing columns directly is by far more common. <code>@colname</code> does an initial
+parse of the data: to a <code><a href="#FUNCTION%20CLEEK%3ASTRING" class="xref">string</a></code> for TSVs and to a JSON datatype for JSON (see <a href="https://github.com/Zulu-Inuoe/jzon">JZON</a> documentation for details). <code>@@colname</code> fully parses the column to a useful representation based on the Zeek
+data type:</p> <ul> <li><code>bool</code> -&gt; <code>(or t nil)</code></li> <li><code><a href="#FUNCTION%20CLEEK%3ACOUNT" class="xref">count</a></code> -&gt; <code><a href="#CLASS%20CLEEK%3AINTEGER" class="xref">integer</a></code></li> <li><code>int</code> -&gt; <code><a href="#CLASS%20CLEEK%3AINTEGER" class="xref">integer</a></code></li> <li><code><a href="#MACRO-FUNCTION%20CLEEK%3ATIME" class="xref">time</a></code> -&gt; <code>local-time:timestamp</code></li> <li><code>interval</code> -&gt; <code><a href="#CLASS%20CLEEK%3ADOUBLE-FLOAT" class="xref">double-float</a></code></li> <li><code><a href="#FUNCTION%20CLEEK%3ASTRING" class="xref">string</a></code> -&gt; <code><a href="#FUNCTION%20CLEEK%3ASTRING" class="xref">string</a></code></li> <li><code>port</code> -&gt; <code><a href="#CLASS%20CLEEK%3AINTEGER" class="xref">integer</a></code></li> <li><code>addr</code> -&gt; <code>netaddr::ip-address</code></li> <li><code>subnet</code> -&gt; <code>netaddr::ip-network</code></li> <li><code>enum</code> -&gt; <code><a href="#FUNCTION%20CLEEK%3ASTRING" class="xref">string</a></code></li> </ul> <p>Oftentimes when working with Zeek TSVs you can get by with just strings:</p> <pre><code>~/code/cleek topic/yacin/modified-and-fmt-change*
+¡ cat data/test-input/zeek/ssh.log | cleek -x '(str:starts-with? &quot;C4&quot; @uid)' # alternatively: cleek -x '(~ #?/^C4/ @uid)'
+#separator \x09
+#set_separator  ,
+#empty_field    (empty)
+#unset_field    -
+#path   ssh
+#open   2025-04-01-09-50-28
+#fields ts  uid id.orig_h   id.orig_p   id.resp_h   id.resp_p   version auth_success    auth_attempts   direction   client  server  cipher_alg  mac_alg compression_alg kex_alg host_key_alg    host_key
+#types  time    string  addr    port    addr    port    count   bool    count   enum    string  string  string  string  string  string  string  string
+1623187704.078114   C4KEFY1wBmfzxmr0T9  140.249.20.119  48610   192.168.1.145   22  2   -   0   INBOUND SSH-2.0-libssh-0.6.3    SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.2 aes256-ctr  hmac-sha1   none    curve25519-sha256@libssh.org    ecdsa-sha2-nistp256 a5:1b:06:f3:65:01:e1:a6:4d:86:a4:d6:49:cd:50:f3
+#close  2025-05-11-08-43-11</code></pre> <p>Logical operators will function as expected. Ensure that the filter is just a
+single expression!</p> <pre><code>~/code/cleek topic/yacin/modified-and-fmt-change*
+¡ cat data/test-input/zeek/dns.log | cleek -x '(and (string= &quot;A&quot; @qtype_name) (string= &quot;NXDOMAIN&quot; @rcode_name))'
+#separator \x09
+#set_separator  ,
+#empty_field    (empty)
+#unset_field    -
+#path   dns
+#open   2025-04-01-09-50-28
+#fields ts  uid id.orig_h   id.orig_p   id.resp_h   id.resp_p   proto   trans_id    rtt query   qclass  qclass_name qtype   qtype_name  rcode   rcode_name  AA  TC  RD  RA  Z   answers TTLs    rejected
+#types  time    string  addr    port    addr    port    enum    count   interval    string  count   string  count   string  count   string  bool    bool    bool    bool    count   vector[string]  vector[interval]    bool
+1623187699.490760   CYfPGx7uiiW6Cz4dk   71.127.52.28    50977   8.8.8.8 53  udp 6226    -   netmon-control.dropbox.com  1   C_INTERNET  1   A   3   NXDOMAIN    F   F   T   F   0   --  F
+1623187699.490583   CiZcmz1j6KBBxTwLCa  192.168.1.77    50977   8.8.8.8 53  udp 6226    -   netmon-control.dropbox.com  1   C_INTERNET  1   A   3   NXDOMAIN    F   F   T   F   0   --  F
+#close  2025-05-11-08-49-37</code></pre> <p>If we use <code>@@</code>, we can do numerical comparisons or even check that the field is set:</p> <pre><code>~/code/cleek topic/yacin/modified-and-fmt-change*
+¡ cat data/test-input/zeek/dns.log | cleek -x '(and (&gt; @@id.resp_p 53) (zerop @@trans_id) @@rcode_name)'
+#separator \x09
+#set_separator  ,
+#empty_field    (empty)
+#unset_field    -
+#path   dns
+#open   2025-04-01-09-50-28
+#fields ts  uid id.orig_h   id.orig_p   id.resp_h   id.resp_p   proto   trans_id    rtt query   qclass  qclass_name qtype   qtype_name  rcode   rcode_name  AA  TC  RD  RA  Z   answers TTLs    rejected
+#types  time    string  addr    port    addr    port    enum    count   interval    string  count   string  count   string  count   string  bool    bool    bool    bool    count   vector[string]  vector[interval]    bool
+1623187708.119731   ClA7M216ae3KJyG7T3  192.168.1.39    5353    224.0.0.251 5353    udp 0   -   _spotify-connect._tcp.local -   -   -   -   0   NOERROR T   F   F   F   0   ee1519d9-ae41-5824-879e-cc14e60-0._spotify-connect._tcp.local,_spotify-connect._tcp.local   60.000000,60.000000 F
+1623187709.131610   ClA7M216ae3KJyG7T3  192.168.1.39    5353    224.0.0.251 5353    udp 0   -   _spotify-connect._tcp.local -   -   -   -   0   NOERROR T   F   F   F   0   ee1519d9-ae41-5824-879e-cc14e60-0._spotify-connect._tcp.local,_spotify-connect._tcp.local   60.000000,60.000000 F
+#close  2025-05-11-09-00-56</code></pre> <h3 id="mutators">Mutators</h3> <p>Mutators can add or mutate existing fields programmatically. For example, we can
+swap the <code>id.orig_h</code> and <code>id.resp_h</code> fields:</p> <pre><code>~/code/cleek topic/yacin/modified-and-fmt-change*
+¡ cat data/test-input/zeek/dns.log | cleek -m '(psetf @id.orig_h @id.resp_h @id.resp_h @id.orig_h)' -x '(string/= @id.orig_h &quot;8.8.8.8&quot;)'
+#separator \x09
+#set_separator  ,
+#empty_field    (empty)
+#unset_field    -
+#path   dns
+#open   2025-04-01-09-50-28
+#fields ts  uid id.orig_h   id.orig_p   id.resp_h   id.resp_p   proto   trans_id    rtt query   qclass  qclass_name qtype   qtype_name  rcode   rcode_name  AA  TC  RD  RA  Z   answers TTLs    rejected
+#types  time    string  addr    port    addr    port    enum    count   interval    string  count   string  count   string  count   string  bool    bool    bool    bool    count   vector[string]  vector[interval]    bool
+1623187693.607810   CanCs12tqZRLxCYjIg  8.8.4.4 37086   71.127.52.28    53  udp 57211   -   connectivity-check.ubuntu.com   1   C_INTERNET  28  AAAA    0   NOERROR F   F   T   F   0   -   -F
+1623187693.607462   COwkyTZyVphR1U9J5   8.8.4.4 37086   192.168.1.145   53  udp 57211   -   connectivity-check.ubuntu.com   1   C_INTERNET  28  AAAA    0   NOERROR F   F   T   F   0   -   -F
+1623187693.612375   CP62ty2zbRELFEA7Xc  8.8.4.4 42781   71.127.52.28    53  udp 59274   -   connectivity-check.ubuntu.com   1   C_INTERNET  28  AAAA    0   NOERROR F   F   T   F   0   -   -F
+1623187693.612199   C3blIs2Cic3aoqkxyg  8.8.4.4 42781   192.168.1.145   53  udp 59274   -   connectivity-check.ubuntu.com   1   C_INTERNET  28  AAAA    0   NOERROR F   F   T   F   0   -   -F
+1623187712.460603   CaI9sb3NP4gVqBfdC7  71.252.0.12 45755   71.127.52.28    53  udp 6316    0.001585    dynamicdns.park-your-domain.com 1   C_INTERNET  1   A   0   NOERROR F   F   T   T   0104.219.249.157    402.000000  F
+1623187708.119731   ClA7M216ae3KJyG7T3  224.0.0.251 5353    192.168.1.39    5353    udp 0   -   _spotify-connect._tcp.local -   -   -   -   0   NOERROR T   F   F   F   0   ee1519d9-ae41-5824-879e-cc14e60-0._spotify-connect._tcp.local,_spotify-connect._tcp.local   60.000000,60.000000 F
+1623187709.131610   ClA7M216ae3KJyG7T3  224.0.0.251 5353    192.168.1.39    5353    udp 0   -   _spotify-connect._tcp.local -   -   -   -   0   NOERROR T   F   F   F   0   ee1519d9-ae41-5824-879e-cc14e60-0._spotify-connect._tcp.local,_spotify-connect._tcp.local   60.000000,60.000000 F
+1623187719.304016   Cq23XQ1M0xQe1XsU01  224.0.0.251 5353    192.168.1.77    5353    udp 0   -   _rfb._tcp.local 1   C_INTERNET  12  PTR -   -   F   F   F   F   0   -   -   F
+1623187719.304136   CgbKYo4zyTSWZMRi6c  ff02::fb    5353    fe80::1462:3ff9:fd68:b0fc   5353    udp 0   -   _rfb._tcp.local 1   C_INTERNET  12  PTR -   -   F   F   F   F   0   --  F
+1623187719.310901   CefLlJ3hXT0Ej5uhJj  224.0.0.251 5353    192.168.1.199   5353    udp 0   -   _rfb._tcp.local 1   C_INTERNET  12  PTR -   -   F   F   F   F   0   -   -   F
+1623187719.312043   C0Nrcq1vlkZd3pJYY3  ff02::fb    5353    fe80::c9f:10f3:3b0a:b833    5353    udp 0   -   _rfb._tcp.local 1   C_INTERNET  12  PTR -   -   F   F   F   F   0   --  F
+#close  2025-05-11-09-16-05</code></pre> <p>Or add a field, <code>@tld</code>, but grabbing the last part from <code>@query</code>:</p> <pre><code>~/code/cleek topic/yacin/modified-and-fmt-change*
+¡ cat data/test-input/zeek/dns.log | cleek -m '(setf @tld (first (last (str:split &quot;.&quot; @query))))' | zeek-cut query tld | head
+connectivity-check.ubuntu.com   com
+connectivity-check.ubuntu.com   com
+connectivity-check.ubuntu.com   com
+connectivity-check.ubuntu.com   com
+unchartedsoftware.slack.com com
+unchartedsoftware.slack.com com
+edgeapi.slack.com   com
+edgeapi.slack.com   com
+d.dropbox.com   com
+d.dropbox.com   com</code></pre> <p>See <a href="./tests.lisp">tests.lisp</a> for more usage examples.</p> <h3 id="helpers">Helpers</h3> <p><code><a href="#PACKAGE%20CLEEK" class="xref">cleek</a></code> has a handful of helper functions. See <a href="#">their documentation</a> for
+usage. Any unary function defined here can be suffixed with <code>!</code> to replace the
+colulmn with the result of applying the function to the column's value. Even
+though the function is unary, with the <code>!</code> suffix it can take an arbitrary
+number of columns. The transformation is essentially:</p> <pre><code>(anonip! @c1 @c2 @c3)
+;; becomes
+(setf @c1 (<a href="#GENERIC-FUNCTION%20CLEEK%3AANONIP" class="xref">anonip</a> @c1)
+      @c2 (<a href="#GENERIC-FUNCTION%20CLEEK%3AANONIP" class="xref">anonip</a> @c2)
+      @c3 (<a href="#GENERIC-FUNCTION%20CLEEK%3AANONIP" class="xref">anonip</a> @c3))</code></pre> <h3 id="common_filters_and_mutators">Common Filters and Mutators</h3> <p>The file <a href="./common-filters-and-mutators.lisp">common-filters-and-mutators.lisp</a> can be augmented with additional filters or mutators you would like to use at
+runtime. If the modified file is present and located in <code>~/.config/cleek/common-filters-and-mutators.lisp</code> the file is read/compiled
+when <code><a href="#PACKAGE%20CLEEK" class="xref">cleek</a></code> is run and those are available to use as filters or mutators. If
+you find yourself re-using a large filter or mutator often, it would make sense
+to add it here. Note that untrusted code should <em>not</em> end up here or you're
+going to have a bad time.</p> <h2 id="building">Building</h2> <p><code><a href="#PACKAGE%20CLEEK" class="xref">cleek</a></code> depends on <code>(&quot;str&quot; &quot;uiop&quot; &quot;alexandria&quot; &quot;cl-ppcre&quot; &quot;cl-tld&quot; &quot;netaddr&quot;
+&quot;cl-dns&quot; &quot;com.inuoe.jzon&quot; &quot;local-time&quot; &quot;clingon&quot; &quot;serapeum&quot; &quot;split-sequence&quot;
+&quot;cl-interpol&quot; &quot;ironclad&quot;)</code> to build, all of which are on quicklisp save <a href="https://github.com/ynadji/cl-dns">cl-dns</a> and <a href="https://github.com/ynadji/netaddr">netaddr</a>. If you currently use <a href="#">roswell</a> you can build with <code>make</code>. Otherwise, use <code>$ lisp-impl --eval &quot;(progn (asdf:make
+:cleek) (quit))&quot;</code> or the equivalent. <code><a href="#PACKAGE%20CLEEK" class="xref">cleek</a></code> has only been tested with SBCL on
+ARM macOS and amd64 Linux.</p> </section>   <section id="system"> <h2>System Information</h2>   <div class="row"> <label for="dependencies">Dependencies:</label> <ul id="dependencies"><li><a class="external" href="https://github.com/vindarel/cl-str">str</a></li><li><a class="external">uiop</a></li><li><a class="external">alexandria</a></li><li><a class="external">cl-ppcre</a></li><li><a class="external">cl-tld</a></li><li><a class="external">netaddr</a></li><li><a class="external">cl-dns</a></li><li><a class="external">com.inuoe.jzon</a></li><li><a class="external">local-time</a></li><li><a class="external" href="https://github.com/dnaeon/clingon">clingon</a></li><li><a class="external">serapeum</a></li><li><a class="external">split-sequence</a></li><li><a class="external">cl-interpol</a></li><li><a class="external">ironclad</a></li></ul> </div>   <div class="row" id="author"> <label for="author">Author:</label> <a href="mailto:yacin@defmacro.cc">Yacin Nadji</a> </div>   <div class="row"> <label for="license">License:</label> <a id="license" href="https://tldrlegal.com/search?q=MIT">MIT</a> </div>     </section>    <section id="index"> <h2>Definition Index</h2> <ul> <li> <article class="definition package" id="PACKAGE CLEEK"> <header> <h3> <a href="#PACKAGE%20CLEEK">CLEEK</a> </h3> <ul class="nicknames"></ul>  </header> <div class="docstring"><i>No documentation provided.</i></div> <ul class="definitions"> <li> <article class="definition function callable" id="FUNCTION CLEEK:E2LD"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3AE2LD">E2LD</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">DOMAIN</li>  </ul>  <a class="source-link" href="file:///Users/yacin/code/cleek/helpers.lisp#64:0">Source</a>  </header> <div class="docstring"><pre>Return the effective second-level domain for a DOMAIN, e.g., (e2ld &quot;foo.bar.google.com&quot;) =&gt; &quot;google.com&quot;.</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:F"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3AF">F</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">PATH</li>    <li class="argument lambda-list-keyword">&amp;OPTIONAL</li>    <li class="argument">TYPE</li>    <li class="argument">MAX-VECTOR-SIZE</li>  </ul>  <a class="source-link" href="file:///Users/yacin/code/cleek/helpers.lisp#28:0">Source</a>  </header> <div class="docstring"><pre>Read in a list of TYPE data from a file, one per line, to use as a container for CONTAINS? searches. TYPE must be one of (:STR :IP :DNS). :DNS builds a CL-DNS:TRIE to check for domain membership, :IP builds a NETADDR:IP-SET for IP/CIDR membership, and :STR builds an array (or HASH-TABLE if the file contains over MAX-VECTOR-SIZE items).</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:PRIVATE?"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3APRIVATE%3F">PRIVATE?</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">IP</li>  </ul>  </header> <div class="docstring"><pre>Alias for NETADDR:PRIVATE? which returns T if the IP address is privately routable. Requires a NETADDR::IP-LIKE (so fully parse with @@).</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:PUBLIC?"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3APUBLIC%3F">PUBLIC?</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">IP</li>  </ul>  </header> <div class="docstring"><pre>Alias for NETADDR:PUBLIC? which returns T if the IP address is publicly routable. Requires a NETADDR::IP-LIKE (so fully parse with @@).</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:RESERVED?"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3ARESERVED%3F">RESERVED?</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">IP</li>  </ul>  </header> <div class="docstring"><pre>Alias for NETADDR:RESERVED? which returns T if the IP address is reserved. Requires a NETADDR::IP-LIKE (so fully parse with @@).</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:S/="> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3AS%2F%3D">S/=</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">STRING1</li>    <li class="argument">STRING2</li>    <li class="argument lambda-list-keyword">&amp;KEY</li>    <li class="argument">START1</li>    <li class="argument">END1</li>    <li class="argument">START2</li>    <li class="argument">END2</li>  </ul>  <a class="source-link" href="file:///Users/yacin/.roswell/src/sbcl-2.5.2/src/code/string.lisp#363:0">Source</a>  </header> <div class="docstring"><pre>Alias for STRING/=</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:S="> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3AS%3D">S=</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">STRING1</li>    <li class="argument">STRING2</li>    <li class="argument lambda-list-keyword">&amp;KEY</li>    <li class="argument">START1</li>    <li class="argument">END1</li>    <li class="argument">START2</li>    <li class="argument">END2</li>  </ul>  <a class="source-link" href="file:///Users/yacin/.roswell/src/sbcl-2.5.2/src/code/string.lisp#354:0">Source</a>  </header> <div class="docstring"><pre>Alias for STRING=</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:TLD"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3ATLD">TLD</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">DOMAIN</li>  </ul>  <a class="source-link" href="file:///Users/yacin/code/cleek/helpers.lisp#68:0">Source</a>  </header> <div class="docstring"><pre>Return the effective top-level domain for a DOMAIN, e.g., (e2ld &quot;foo.bar.google.com&quot;) =&gt; &quot;com&quot;.</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:TS/="> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3ATS%2F%3D">TS/=</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">TIMESTAMPS</li>  </ul>  <a class="source-link" href="file:///Users/yacin/.roswell/lisp/quicklisp/dists/quicklisp/software/local-time-20241012-git/src/local-time.lisp#1279:0">Source</a>  </header> <div class="docstring"><pre>Alias for LOCAL-TIME:TIMESTAMP/=</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:TS&lt;"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3ATS%3C">TS&lt;</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">TIMES</li>  </ul>  <a class="source-link" href="file:///Users/yacin/.roswell/lisp/quicklisp/dists/quicklisp/software/local-time-20241012-git/src/local-time.lisp#1264:0">Source</a>  </header> <div class="docstring"><pre>Alias for LOCAL-TIME:TIMESTAMP&lt;</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:TS&lt;="> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3ATS%3C%3D">TS&lt;=</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">TIMES</li>  </ul>  <a class="source-link" href="file:///Users/yacin/.roswell/lisp/quicklisp/dists/quicklisp/software/local-time-20241012-git/src/local-time.lisp#1267:0">Source</a>  </header> <div class="docstring"><pre>Alias for LOCAL-TIME:TIMESTAMP&lt;=</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:TS="> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3ATS%3D">TS=</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">TIMES</li>  </ul>  <a class="source-link" href="file:///Users/yacin/.roswell/lisp/quicklisp/dists/quicklisp/software/local-time-20241012-git/src/local-time.lisp#1276:0">Source</a>  </header> <div class="docstring"><pre>Alias for LOCAL-TIME:TIMESTAMP=</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:TS&gt;"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3ATS%3E">TS&gt;</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">TIMES</li>  </ul>  <a class="source-link" href="file:///Users/yacin/.roswell/lisp/quicklisp/dists/quicklisp/software/local-time-20241012-git/src/local-time.lisp#1270:0">Source</a>  </header> <div class="docstring"><pre>Alias for LOCAL-TIME:TIMESTAMP&gt;</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION CLEEK:TS&gt;="> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20CLEEK%3ATS%3E%3D">TS&gt;=</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">TIMES</li>  </ul>  <a class="source-link" href="file:///Users/yacin/.roswell/lisp/quicklisp/dists/quicklisp/software/local-time-20241012-git/src/local-time.lisp#1273:0">Source</a>  </header> <div class="docstring"><pre>Alias for LOCAL-TIME:TIMESTAMP&gt;=</pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION CLEEK:ANONCIDR"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20CLEEK%3AANONCIDR">ANONCIDR</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">CIDR</li>  </ul>  <a class="source-link" href="file:///Users/yacin/code/cleek/helpers.lisp#87:0">Source</a>  </header> <div class="docstring"><pre>Anonymize a CIDR (or subnet in Zeek parlance) by using ANONIP on its first address and reapplying the netmask.</pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION CLEEK:ANONIP"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20CLEEK%3AANONIP">ANONIP</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">IP</li>  </ul>  <a class="source-link" href="file:///Users/yacin/code/cleek/helpers.lisp#87:0">Source</a>  </header> <div class="docstring"><pre>Anonymize an IP address by permuting each byte with a fixed set of permutations for each byte.</pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION CLEEK:C?"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20CLEEK%3AC%3F">C?</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">CONTAINER</li>    <li class="argument">X</li>  </ul>  <a class="source-link" href="file:///Users/yacin/code/cleek/helpers.lisp#3:0">Source</a>  </header> <div class="docstring"><pre>Alias for CONTAINS?</pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION CLEEK:CONTAINS?"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20CLEEK%3ACONTAINS%3F">CONTAINS?</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">CONTAINER</li>    <li class="argument">X</li>  </ul>  <a class="source-link" href="file:///Users/yacin/code/cleek/helpers.lisp#3:0">Source</a>  </header> <div class="docstring"><pre>Returns a truthy value if CONTAINER contains the value X. Support multiple container types including: NETADDR:IP+, CL-DNS:DOMAIN-TRIE, HASH-TABLE, LIST, VECTOR, and STRING.</pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION CLEEK:HASH"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20CLEEK%3AHASH">HASH</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">FIELD</li>  </ul>  <a class="source-link" href="file:///Users/yacin/code/cleek/helpers.lisp#78:0">Source</a>  </header> <div class="docstring"><pre>Hashes a field using a SHA-256 keyed hash. Used for anonymizing logs.</pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION CLEEK:TS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20CLEEK%3ATS">TS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TS</li>  </ul>  <a class="source-link" href="file:///Users/yacin/code/cleek/helpers.lisp#41:0">Source</a>  </header> <div class="docstring"><pre>Parse column values as a LOCAL-TIME:TIMESTAMP.</pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION CLEEK:ANNO"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20CLEEK%3AANNO">ANNO</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">FIELD</li>    <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">CONTAINERS-AND-LABELS</li>  </ul>  <a class="source-link" href="file:///Users/yacin/code/cleek/helpers.lisp#55:0">Source</a>  </header> <div class="docstring"><pre>Given a column in FIELD and an even number of pair-wise containers/labels, return the label for which container contains FIELD. A default container can be specified with T. Use with SETF to create a new column based on this label, for example: (setf @orig_label (anno @o_h #.#I(&quot;192.168.0.0/16&quot;) &quot;192.168&quot; &quot;.127.52.&quot; &quot;string-contains&quot; '(&quot;fe80::1462:3ff9:fd68:b0fc&quot;) &quot;list-contains&quot; t &quot;unknown&quot;)) creates the column ORIG_LABEL based on IP checks, a string check, a list membership check, and a default case.</pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION CLEEK:~"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20CLEEK%3A~">~</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">REGEX</li>    <li class="argument">FIELD</li>  </ul>  <a class="source-link" href="file:///Users/yacin/code/cleek/helpers.lisp#126:0">Source</a>  </header> <div class="docstring"><pre>Short-hand for CL-PPCRE:SCAN. Implemented as a macro so constant REGEXes only get compiled once.</pre></div> </article> </li> </ul> </article> </li> </ul> </section>  </article> <script>window.addEventListener("DOMContentLoaded", function(){
+    var unmarkElement = function(el){
+        if(el.tagName === "mark" || el.tagName === "MARK"){
+            [].forEach.call(el.childNodes, function(child){
+                el.parentNode.insertBefore(child, el);
+            });
+            el.parentNode.removeChild(el);
+        }else if(el.parentNode.tagName === "mark"){
+            return unmarkElement(el.parentNode);
+        }
+        return null;
+    }
+
+    var unmarkAll = function(root){
+        root = root || document;
+        [].forEach.call(root.querySelectorAll("mark"), unmarkElement);
+    }
+    
+    var markElement = function(el){
+        if(el.parentNode.tagName === "mark" || el.parentNode.tagName === "MARK"){
+            return el.parentNode;
+        } else {
+            unmarkAll();
+            var marked = document.createElement("mark");
+            el.parentNode.insertBefore(marked, el);
+            marked.appendChild(el);
+            return marked;
+        }
+    }
+
+    var markFragmented = function(){
+        if(window.location.hash){
+            var el = document.getElementById(decodeURIComponent(window.location.hash.substr(1)));
+            if(el) markElement(el);
+        }
+    }
+
+    var registerXrefLink = function(link){
+        var el = document.getElementById(decodeURIComponent(link.getAttribute("href").substr(1)));
+        if(el){
+            link.addEventListener("click", function(){
+                markElement(el);
+            });
+        }
+    }
+
+    var registerXrefLinks = function(root){
+        root = root || document;
+        [].forEach.call(root.querySelectorAll("a.xref"), registerXrefLink);
+    }
+
+    markFragmented();
+    registerXrefLinks();
+}); </script> </body> </html> 

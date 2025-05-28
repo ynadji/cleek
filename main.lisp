@@ -1,10 +1,15 @@
 (in-package :cleek)
 
 ;; TODOs:
-;; * suite for performance testing so you can optimize things more easily.
+;; * suite for performance testing so you can optimize things more easily. [in progress]
 ;; * "learn" new zeek log formats. this honestly isn't super important since you're mostly working with :zeek logs.
 ;; * JIT optimize three sets of compiled functions: essentially make commonly used columns are extracted once and shared
 ;;   across the three compiled functions.
+;; * you can't do something like (or @@col1 @@col2) as a filter, because of the truthy-parse-func. think about what you'd
+;;   need to ignore exactly to make that doable.
+;; * make (setf @@colname ...) work. i guess you'll need to know what to map it to though?
+;; * update README with examples. [in progress]
+;; * make it so you can just DROP-LINE for any failures moving forward?
 
 (defvar *debug-compiled-functions* nil)
 (defvar *common-filters-and-mutators-path* #P"~/.config/cleek/common-filters-and-mutators.lisp")
