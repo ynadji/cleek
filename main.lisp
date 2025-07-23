@@ -290,15 +290,15 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
         ;;
         ;; if you handle END-OF-FILE here, it prevents the RESTART-CASE in the COMPILE-RUNTIME-* functions from being
         ;; able to handle the restarts. unsure why.
-        (sb-int:broken-pipe nil)
+        #+sbcl (sb-int:broken-pipe nil)
         ;; If there's a debugger error, after aborting SIMPLE-FILE-ERROR is raised again. This let's a user immediately
         ;; exit after running into an error.
-        (sb-int:simple-file-error nil)))))
+        #+sbcl (sb-int:simple-file-error nil)))))
 
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.14.0"
+   :version "0.14.1"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
