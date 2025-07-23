@@ -16,7 +16,7 @@
 (defvar *common-filters-and-mutators* nil)
 (defun init-common-filters-and-mutators ()
   (when (probe-file *common-filters-and-mutators-path*)
-    (load *common-filters-and-mutators-path*)))
+    (load *common-filters-and-mutators-path* :verbose nil)))
 
 (defun foo (log)
   ;; # assembly generated
@@ -306,4 +306,5 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
 
 (defun main ()
   (let ((app (cat/command)))
-    (clingon:run app)))
+    ;; NB: LispWorks seems to require manually passing in the args to work.
+    (clingon:run app (cdr (uiop:raw-command-line-arguments)))))
