@@ -7,6 +7,9 @@ coverage:
 test:
 	ros run --eval "(progn (asdf:test-system :cleek) (quit))"
 
+deliver:
+	lw-console -build deliver.lisp
+
 .PHONY: docs
 docs:
 	ros run --eval "(ql:quickload :staple-markdown)" --eval "(staple:generate :cleek :if-exists :supersede)" --eval "(quit)"

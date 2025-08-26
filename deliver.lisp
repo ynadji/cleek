@@ -15,6 +15,6 @@
 (let* ((version (asdf:system-version (asdf:find-system :cleek)))
        (src-dir (asdf:system-source-directory :cleek)))
   (deliver #'cleek:main
-           "cleek.lw"
+           "bin/cleek.lw"
            0
            :editor-style :emacs))
