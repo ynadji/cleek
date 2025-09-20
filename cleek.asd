@@ -9,7 +9,7 @@
   :description "A Zeek log manipulation CLI tool."
   :author "Yacin Nadji <yacin@defmacro.cc>"
   :license "MIT"
-  :depends-on ("str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns" "com.inuoe.jzon" "local-time" "clingon" "serapeum" "split-sequence" "cl-interpol" "ironclad")
+  :depends-on ("str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr" "cl-dns" "com.inuoe.jzon" "local-time" "clingon" "split-sequence" "cl-interpol" "ironclad")
   :components ((:file "packages")
                (:file "types")
                (:file "io")

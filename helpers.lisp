@@ -20,10 +20,16 @@
     (find x container))
   (:method ((substring string) (x string))
     (str:contains? substring x)))
-(serapeum:defalias c? #'contains? "Alias for CONTAINS?")
 
-(serapeum:defalias s= #'string= "Alias for STRING=")
-(serapeum:defalias s/= #'string/= "Alias for STRING/=")
+(defmacro defalias (alias func &optional docstring)
+  `(progn (setf (fdefinition ',alias) ,func)
+          (when ,docstring
+            (setf (documentation ',alias 'function) ,docstring))))
+
+(defalias c? #'contains? "Alias for CONTAINS?")
+
+(defalias s= #'string= "Alias for STRING=")
+(defalias s/= #'string/= "Alias for STRING/=")
 
 (defun f (path &optional (type :str) (max-vector-size 7))
   "Read in a list of TYPE data from a file, one per line, to use as a container for CONTAINS? searches. TYPE must be one of (:STR :IP :DNS). :DNS builds a CL-DNS:TRIE to check for domain membership, :IP builds a NETADDR:IP-SET for IP/CIDR membership, and :STR builds an array (or HASH-TABLE if the file contains over MAX-VECTOR-SIZE items)."
@@ -45,12 +51,12 @@
   (:method ((ts real))
     (double-to-timestamp ts)))
 
-(serapeum:defalias ts< #'local-time:timestamp< "Alias for LOCAL-TIME:TIMESTAMP<")
-(serapeum:defalias ts<= #'local-time:timestamp<= "Alias for LOCAL-TIME:TIMESTAMP<=")
-(serapeum:defalias ts> #'local-time:timestamp> "Alias for LOCAL-TIME:TIMESTAMP>")
-(serapeum:defalias ts>= #'local-time:timestamp>= "Alias for LOCAL-TIME:TIMESTAMP>=")
-(serapeum:defalias ts= #'local-time:timestamp= "Alias for LOCAL-TIME:TIMESTAMP=")
-(serapeum:defalias ts/= #'local-time:timestamp/= "Alias for LOCAL-TIME:TIMESTAMP/=")
+(defalias ts< #'local-time:timestamp< "Alias for LOCAL-TIME:TIMESTAMP<")
+(defalias ts<= #'local-time:timestamp<= "Alias for LOCAL-TIME:TIMESTAMP<=")
+(defalias ts> #'local-time:timestamp> "Alias for LOCAL-TIME:TIMESTAMP>")
+(defalias ts>= #'local-time:timestamp>= "Alias for LOCAL-TIME:TIMESTAMP>=")
+(defalias ts= #'local-time:timestamp= "Alias for LOCAL-TIME:TIMESTAMP=")
+(defalias ts/= #'local-time:timestamp/= "Alias for LOCAL-TIME:TIMESTAMP/=")
 
 (defmacro anno (field &rest containers-and-labels)
   "Given a column in FIELD and an even number of pair-wise containers/labels, return the label for which container contains FIELD. A default container can be specified with T. Use with SETF to create a new column based on this label, for example: (setf @orig_label (anno @o_h #.#I(\"192.168.0.0/16\") \"192.168\" \".127.52.\" \"string-contains\" \'(\"fe80::1462:3ff9:fd68:b0fc\") \"list-contains\" t \"unknown\")) creates the column ORIG_LABEL based on IP checks, a string check, a list membership check, and a default case."
@@ -117,9 +123,9 @@
         (let ((first-ip-anon (anonip na:first-ip)))
           (na:make-ip-network (format nil "~a/~a" (na:str first-ip-anon) na::mask)))))))
 
-(serapeum:defalias public? #'na:public? "Alias for NETADDR:PUBLIC? which returns T if the IP address is publicly routable. Requires a NETADDR::IP-LIKE (so fully parse with @@).")
-(serapeum:defalias private? #'na:private? "Alias for NETADDR:PRIVATE? which returns T if the IP address is privately routable. Requires a NETADDR::IP-LIKE (so fully parse with @@).")
-(serapeum:defalias reserved? #'na:reserved? "Alias for NETADDR:RESERVED? which returns T if the IP address is reserved. Requires a NETADDR::IP-LIKE (so fully parse with @@).")
+(defalias public? #'na:public? "Alias for NETADDR:PUBLIC? which returns T if the IP address is publicly routable. Requires a NETADDR::IP-LIKE (so fully parse with @@).")
+(defalias private? #'na:private? "Alias for NETADDR:PRIVATE? which returns T if the IP address is privately routable. Requires a NETADDR::IP-LIKE (so fully parse with @@).")
+(defalias reserved? #'na:reserved? "Alias for NETADDR:RESERVED? which returns T if the IP address is reserved. Requires a NETADDR::IP-LIKE (so fully parse with @@).")
 
 ;; is there a reasonable way to anonymize domains?
 
