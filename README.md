@@ -33,7 +33,7 @@ log aware version of `cat`:
 
 ```
 ~/code/cleek topic/yacin/modified-and-fmt-change*
-¡ cat data/test-input/zeek/ssh.log 
+¡ cat data/test-input/zeek/ssh.log
 #separator \x09
 #set_separator	,
 #empty_field	(empty)
@@ -204,7 +204,7 @@ swap the `id.orig_h` and `id.resp_h` fields:
 
 ```
 ~/code/cleek topic/yacin/modified-and-fmt-change*
-¡ cat data/test-input/zeek/dns.log | cleek -m '(psetf @id.orig_h @id.resp_h @id.resp_h @id.orig_h)' -x '(string/= @id.orig_h "8.8.8.8")'
+¡ cat data/test-input/zeek/dns.log | cleek -m '(rotatef @id.orig_h @id.resp_h)' -x '(string/= @id.orig_h "8.8.8.8")'
 #separator \x09
 #set_separator	,
 #empty_field	(empty)
