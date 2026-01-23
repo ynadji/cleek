@@ -278,8 +278,7 @@ going to have a bad time.
 `cleek` depends on `("str" "uiop" "alexandria" "cl-ppcre" "cl-tld" "netaddr"
 "cl-dns" "com.inuoe.jzon" "local-time" "clingon" "serapeum" "split-sequence"
 "cl-interpol" "ironclad")` to build, all of which are on quicklisp save
-[cl-dns](https://github.com/ynadji/cl-dns) and
-[netaddr](https://github.com/ynadji/netaddr). If you currently use [roswell](#)
+[cl-dns](https://github.com/ynadji/cl-dns). If you currently use [roswell](#)
 you can build with `make`. Otherwise, use `$ lisp-impl --eval "(progn (asdf:make
 :cleek) (quit))"` or the equivalent. `cleek` has only been tested with SBCL on
 ARM macOS and amd64 Linux.
