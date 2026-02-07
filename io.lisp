@@ -84,6 +84,12 @@
     (ecase (zeek-format zeek-log)
       (:zeek (parse-zeek-header zeek-log))
       (:json (next-record zeek-log) (infer-log-path-fields-types zeek-log)))
+    ;; Pre-allocate offsets and row-strings vectors now that field count is known.
+    (when (zeek-fields zeek-log)
+      (setf (zeek-offsets zeek-log)
+            (make-array (1+ (length (zeek-fields zeek-log))) :element-type 'fixnum)
+            (zeek-row-strings zeek-log)
+            (make-array (length (zeek-fields zeek-log)) :initial-element nil)))
     (when (zeek-accessed-columns zeek-log)
       (ensure-fields->idx zeek-log)
       (ecase (zeek-format zeek-log)
@@ -150,7 +156,7 @@
            (mapcar (lambda (s) (close s :abort ,abort?)) ,streams)
            (close (zeek-stream ,log) :abort ,abort?))))))
 
-(defun split-tab-to-vector (line)
+(defun %split-tab-to-vector (line)
   "Split LINE on tabs into simple-vector of strings.
 Single-pass tab splitter: collect fields via POSITION, then copy to vector."
   (declare (optimize (speed 3) (safety 1))
@@ -171,6 +177,22 @@ Single-pass tab splitter: collect fields via POSITION, then copy to vector."
             do (setf (svref result i) f))
       result)))
 
+(defun compute-offsets (line offsets)
+  "Scan LINE for tabs, store field boundaries in OFFSETS (pre-allocated).
+   OFFSETS[i] = start of field i, OFFSETS[nfields] = (length line)."
+  (declare (optimize (speed 3) (safety 1))
+           (type simple-string line)
+           (type (simple-array fixnum (*)) offsets))
+  (let ((nfields (1- (length offsets))))
+    (declare (type fixnum nfields))
+    (setf (aref offsets 0) 0)
+    (loop with start fixnum = 0
+          for i fixnum from 1 below nfields
+          for tab-pos = (position #\Tab line :start start)
+          do (setf (aref offsets i) (the fixnum (1+ tab-pos))
+                   start (the fixnum (1+ tab-pos))))
+    (setf (aref offsets nfields) (length line))))
+
 ;; TODO: if FIELDS is non-NIL, only parse those fields.
 ;; just make ROW-STRINGS only as long as the number of fields you have
 ;; then ENSURE-ROW will just work.
@@ -186,8 +208,9 @@ Single-pass tab splitter: collect fields via POSITION, then copy to vector."
         (error "Parsing of individual fields not implemented.")
         (let ((line (zeek-line zeek-log)))
           (declare (type simple-string line))
-          (setf (zeek-row-strings zeek-log) (split-tab-to-vector line)
-                (zeek-status zeek-log) :row-strings)))))
+          (compute-offsets line (zeek-offsets zeek-log))
+          (fill (zeek-row-strings zeek-log) nil)
+          (setf (zeek-status zeek-log) :row-strings)))))
 
 ;; TODO: if FIELDS is non-NIL, only parse those fields.
 ;; TODO: you should do a quick check to see if only parsing the needed fields

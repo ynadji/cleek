@@ -9,6 +9,7 @@
   line
   types
   fields
+  offsets
   row-strings
   row
   (field->idx (make-hash-table) :type hash-table)
