@@ -249,6 +249,9 @@ maps the element parser. Caches the result in *zeek-type-parsers*."
 ;; newly created field) but what if we need to filter fields that are going to be fully parsed and used as part of a
 ;; mutator? hmm. multiple rounds? interleaving sounds annoying though.
 (defun parse-zeek-type (field type &optional unset-is-nil?)
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type string field)
+           (type keyword type))
   ;; unset should probably be 'null and empty should probably be #() (since '() is eq to nil)
   (cond ((string= field (string *zeek-unset-field*)) (if unset-is-nil? nil 'cl::null))
         ((string= field (string *zeek-empty-field*))

@@ -34,7 +34,9 @@
 (defun ensure-fully-parsed-non-nil-func (full-columns)
   (when full-columns
     (let ((filters (cons 'and (mapcar (lambda (c) `(get-value log ,(or-nickname c) t)) full-columns))))
-      (values (compile nil `(lambda (log) (declare (ignorable log))
+      (values (compile nil `(lambda (log) (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+                                                       (ignorable log)
+                                                       (type zeek log))
                               ;; duplication of filter RESTART-CASE is a bit annoying.
                               (restart-case ,filters
                                 (drop-line () :report (lambda (stream)
@@ -209,7 +211,9 @@
         (let ((raw-filters (with-input-from-string (in s)
                              (read in nil))))
           (multiple-value-bind (filters columns full-columns) (expand-columns raw-filters)
-            (values (compile nil `(lambda (log) (declare (ignorable log))
+            (values (compile nil `(lambda (log) (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+                                                         (ignorable log)
+                                                         (type zeek log))
                                     (restart-case ,(macroexpand-1 filters)
                                       (drop-line () :report (lambda (stream)
                                                               (format stream "DROP-LINE: \"~a\"" (zeek-line log))) nil)
@@ -257,7 +261,10 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
           (let* ((raw-mutators (with-input-from-string (in s)
                                  (read-all-progn in))))
             (multiple-value-bind (mutators columns full-columns) (expand-columns (update-setters raw-mutators))
-              (values (compile nil `(lambda (log) (declare (ignorable log)) ,(macroexpand-1 mutators)))
+              (values (compile nil `(lambda (log) (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+                                                           (ignorable log)
+                                                           (type zeek log))
+                                     ,(macroexpand-1 mutators)))
                       columns
                       full-columns
                       mutators))))
