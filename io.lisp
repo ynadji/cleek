@@ -179,7 +179,11 @@ Single-pass tab splitter: collect fields via POSITION, then copy to vector."
 
 (defun compute-offsets (line offsets)
   "Scan LINE for tabs, store field boundaries in OFFSETS (pre-allocated).
-   OFFSETS[i] = start of field i, OFFSETS[nfields] = (length line)."
+   OFFSETS[0] = 0 (start of field 0).
+   OFFSETS[i] for i=1..nfields-1 = tab position (exclusive end of field i-1).
+   OFFSETS[nfields] = (length line) (exclusive end of last field).
+   Field 0: (subseq line 0 (aref offsets 1)).
+   Field i>0: (subseq line (1+ (aref offsets i)) (aref offsets (1+ i)))."
   (declare (optimize (speed 3) (safety 1))
            (type simple-string line)
            (type (simple-array fixnum (*)) offsets))
@@ -189,7 +193,7 @@ Single-pass tab splitter: collect fields via POSITION, then copy to vector."
     (loop with start fixnum = 0
           for i fixnum from 1 below nfields
           for tab-pos = (position #\Tab line :start start)
-          do (setf (aref offsets i) (the fixnum (1+ tab-pos))
+          do (setf (aref offsets i) (the fixnum tab-pos)
                    start (the fixnum (1+ tab-pos))))
     (setf (aref offsets nfields) (length line))))
 
