@@ -139,6 +139,27 @@
            (mapcar (lambda (s) (close s :abort ,abort?)) ,streams)
            (close (zeek-stream ,log) :abort ,abort?))))))
 
+(defun split-tab-to-vector (line)
+  "Split LINE on tabs into simple-vector of strings.
+Single-pass tab splitter: collect fields via POSITION, then copy to vector."
+  (declare (optimize (speed 3) (safety 1))
+           (type simple-string line))
+  (let ((fields nil)
+        (nfields 0)
+        (start 0))
+    (declare (type fixnum nfields start))
+    (loop
+      (let ((tab-pos (position #\Tab line :start start)))
+        (push (subseq line start (or tab-pos (length line))) fields)
+        (incf nfields)
+        (unless tab-pos (return))
+        (setf start (the fixnum (1+ tab-pos)))))
+    (let ((result (make-array nfields)))
+      (loop for i from (1- nfields) downto 0
+            for f in fields
+            do (setf (svref result i) f))
+      result)))
+
 ;; TODO: if FIELDS is non-NIL, only parse those fields.
 ;; just make ROW-STRINGS only as long as the number of fields you have
 ;; then ENSURE-ROW will just work.
@@ -150,7 +171,7 @@
   (when (eq :unparsed (zeek-status zeek-log))
     (if fields
         (error "Parsing of individual fields not implemented.")
-        (setf (zeek-row-strings zeek-log) (coerce (split-sequence #\Tab (zeek-line zeek-log)) 'vector)
+        (setf (zeek-row-strings zeek-log) (split-tab-to-vector (zeek-line zeek-log))
               (zeek-status zeek-log) :row-strings))))
 
 ;; TODO: if FIELDS is non-NIL, only parse those fields.
