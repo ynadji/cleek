@@ -51,26 +51,40 @@
                    (if fully-parsed?
                        (parse-zeek-type val (field->type zeek-log field) t)
                        val))
-                 ;; Regular fields: lazy materialization from offsets
-                 (let* ((idx (the fixnum (field->idx zeek-log field)))
-                        (cached (svref (zeek-row-strings zeek-log) idx)))
-                   (if cached
-                       (if fully-parsed?
-                           (parse-zeek-type cached (field->type zeek-log field) t)
-                           cached)
-                       (let* ((offsets (zeek-offsets zeek-log))
-                              (line (zeek-line zeek-log))
-                              (start (if (zerop idx)
-                                         (aref offsets idx)
-                                         (1+ (aref offsets idx))))
-                              (end (aref offsets (1+ idx)))
-                              (val (subseq line start end)))
-                         (declare (type (simple-array fixnum (*)) offsets)
-                                  (type simple-string line))
-                         (setf (svref (zeek-row-strings zeek-log) idx) val)
-                         (if fully-parsed?
-                             (parse-zeek-type val (field->type zeek-log field) t)
-                             val))))))
+                  ;; Regular fields: lazy materialization from offsets
+                  (let* ((idx (the fixnum (field->idx zeek-log field)))
+                         (cached (svref (zeek-row-strings zeek-log) idx)))
+                    (if cached
+                        (if fully-parsed?
+                            (parse-zeek-type cached (field->type zeek-log field) t)
+                            cached)
+                        (let* ((offsets (zeek-offsets zeek-log))
+                               (line (zeek-line zeek-log))
+                               (start (if (zerop idx)
+                                          (aref offsets idx)
+                                          (1+ (aref offsets idx))))
+                               (end (aref offsets (1+ idx)))
+                               (type (field->type zeek-log field)))
+                          (declare (type (simple-array fixnum (*)) offsets)
+                                   (type simple-string line)
+                                   (type fixnum start end))
+                          ;; For numeric types with fully-parsed?, parse directly
+                          ;; from line with :start/:end — avoids subseq allocation.
+                          (if (and fully-parsed?
+                                   ;; Not unset ("-") or empty "(empty)"
+                                   (/= (- end start) 1)
+                                   (member type '(:double :interval :count :int :port) :test #'eq))
+                              (case type
+                                ((:double :interval)
+                                 (fast-parse-double line :start start :end end))
+                                ((:count :int :port)
+                                 (parse-integer line :start start :end end)))
+                              ;; Non-numeric or needs subseq: materialize and cache
+                              (let ((val (subseq line start end)))
+                                (setf (svref (zeek-row-strings zeek-log) idx) val)
+                                (if fully-parsed?
+                                    (parse-zeek-type val type t)
+                                    val))))))))
     (:json (if fully-parsed?
                (zeekify-json-type (gethash field (zeek-map zeek-log)) (field->type zeek-log field))
                (gethash field (zeek-map zeek-log))))))
