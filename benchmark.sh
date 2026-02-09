@@ -1,21 +1,24 @@
 #!/bin/bash
-# Comprehensive CLI benchmark suite for cleek using hyperfine.
-# Produces machine-readable CSV output in benchmark-results.csv.
+# A/B benchmark suite for comparing two cleek binaries using hyperfine.
 #
-# Usage: bash benchmark.sh [output.csv]
+# Usage: bash benchmark.sh [CLEEK_A] [CLEEK_B]
+#
+# Defaults:
+#   CLEEK_A = bin/cleek
+#   CLEEK_B = bin/cleek.old
 #
 # Prerequisites:
 #   - hyperfine installed (https://github.com/sharkdp/hyperfine)
-#   - bin/cleek binary built
+#   - Both binaries built
 #   - data/test-input/homenet-uncompressed.{zeek,json}.log present
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLEEK="${SCRIPT_DIR}/bin/cleek"
+CLEEK_A="${1:-${SCRIPT_DIR}/bin/cleek}"
+CLEEK_B="${2:-${SCRIPT_DIR}/bin/cleek.old}"
 ZEEK_INPUT="${SCRIPT_DIR}/data/test-input/homenet-uncompressed.zeek.log"
 JSON_INPUT="${SCRIPT_DIR}/data/test-input/homenet-uncompressed.json.log"
-OUTPUT_CSV="${1:-benchmark-results.csv}"
 
 # --- Preflight checks ---
 if ! command -v hyperfine &>/dev/null; then
@@ -23,10 +26,12 @@ if ! command -v hyperfine &>/dev/null; then
     exit 1
 fi
 
-if [[ ! -x "${CLEEK}" ]]; then
-    echo "ERROR: ${CLEEK} not found or not executable. Build with: ros run --eval '(progn (asdf:make :cleek) (quit))'" >&2
-    exit 1
-fi
+for bin in "${CLEEK_A}" "${CLEEK_B}"; do
+    if [[ ! -x "${bin}" ]]; then
+        echo "ERROR: ${bin} not found or not executable." >&2
+        exit 1
+    fi
+done
 
 for f in "${ZEEK_INPUT}" "${JSON_INPUT}"; do
     if [[ ! -f "${f}" ]]; then
@@ -35,46 +40,77 @@ for f in "${ZEEK_INPUT}" "${JSON_INPUT}"; do
     fi
 done
 
-echo "=== cleek CLI Benchmark Suite ==="
-echo "Binary:     ${CLEEK}"
+LABEL_A="$(basename "${CLEEK_A}")"
+LABEL_B="$(basename "${CLEEK_B}")"
+
+# Disambiguate labels when basenames collide (e.g. both are "cleek")
+if [[ "${LABEL_A}" == "${LABEL_B}" ]]; then
+    LABEL_A="${CLEEK_A}"
+    LABEL_B="${CLEEK_B}"
+fi
+
+echo "=== cleek A/B Benchmark Suite ==="
+echo "Binary A: ${CLEEK_A}"
+echo "Binary B: ${CLEEK_B}"
 echo "Zeek input: ${ZEEK_INPUT}"
 echo "JSON input: ${JSON_INPUT}"
-echo "Output CSV: ${OUTPUT_CSV}"
 echo ""
 
-hyperfine \
-    --warmup 1 \
-    --min-runs 5 \
-    --export-csv "${OUTPUT_CSV}" \
-    --command-name "01-passthrough-tsv" \
-        "${CLEEK} ${ZEEK_INPUT} > /dev/null" \
-    --command-name "02-passthrough-json" \
-        "${CLEEK} ${JSON_INPUT} > /dev/null" \
-    --command-name "03-line-filter-tsv" \
-        "${CLEEK} -x '(~ \"tcp\" LINE)' ${ZEEK_INPUT} > /dev/null" \
-    --command-name "04-line-filter-json" \
-        "${CLEEK} -x '(~ \"tcp\" LINE)' ${JSON_INPUT} > /dev/null" \
-    --command-name "05-at-column-filter-tsv" \
-        "${CLEEK} -x '(string= @proto \"tcp\")' ${ZEEK_INPUT} > /dev/null" \
-    --command-name "06-at-column-filter-json" \
-        "${CLEEK} -x '(string= @proto \"tcp\")' ${JSON_INPUT} > /dev/null" \
-    --command-name "07-atat-column-filter-tsv" \
-        "${CLEEK} -x '(and (plusp @@orig_bytes) (plusp @@resp_bytes))' ${ZEEK_INPUT} > /dev/null" \
-    --command-name "08-atat-column-filter-json" \
-        "${CLEEK} -x '(and (plusp @@orig_bytes) (plusp @@resp_bytes))' ${JSON_INPUT} > /dev/null" \
-    --command-name "09-mutator-tsv" \
-        "${CLEEK} -m '(anonip! @id.orig_h @id.resp_h)' ${ZEEK_INPUT} > /dev/null" \
-    --command-name "10-mutator-json" \
-        "${CLEEK} -m '(anonip! @id.orig_h @id.resp_h)' ${JSON_INPUT} > /dev/null" \
-    --command-name "11-mutator-filter-tsv" \
-        "${CLEEK} -m '(setf @total_bytes (+ @@orig_bytes @@resp_bytes))' -x '(plusp @total_bytes)' ${ZEEK_INPUT} > /dev/null" \
-    --command-name "12-mutator-filter-json" \
-        "${CLEEK} -m '(setf @total_bytes (+ @@orig_bytes @@resp_bytes))' -x '(plusp @total_bytes)' ${JSON_INPUT} > /dev/null" \
-    --command-name "13-format-zeek-to-json" \
-        "${CLEEK} -f json ${ZEEK_INPUT} > /dev/null" \
-    --command-name "14-format-json-to-zeek" \
-        "${CLEEK} -f zeek ${JSON_INPUT} > /dev/null"
+run_bench() {
+    local name="$1"
+    local args="$2"
 
-echo ""
+    echo "--- ${name} ---"
+    hyperfine \
+        --warmup 1 \
+        --min-runs 5 \
+        --command-name "${LABEL_A}" \
+            "${CLEEK_A} ${args}" \
+        --command-name "${LABEL_B}" \
+            "${CLEEK_B} ${args}"
+    echo ""
+}
+
+run_bench "01-passthrough-tsv" \
+    "${ZEEK_INPUT} > /dev/null"
+
+run_bench "02-passthrough-json" \
+    "${JSON_INPUT} > /dev/null"
+
+run_bench "03-line-filter-tsv" \
+    "-x '(~ \"tcp\" LINE)' ${ZEEK_INPUT} > /dev/null"
+
+run_bench "04-line-filter-json" \
+    "-x '(~ \"tcp\" LINE)' ${JSON_INPUT} > /dev/null"
+
+run_bench "05-at-column-filter-tsv" \
+    "-x '(string= @proto \"tcp\")' ${ZEEK_INPUT} > /dev/null"
+
+run_bench "06-at-column-filter-json" \
+    "-x '(string= @proto \"tcp\")' ${JSON_INPUT} > /dev/null"
+
+run_bench "07-atat-column-filter-tsv" \
+    "-x '(and (plusp @@orig_bytes) (plusp @@resp_bytes))' ${ZEEK_INPUT} > /dev/null"
+
+run_bench "08-atat-column-filter-json" \
+    "-x '(and (plusp @@orig_bytes) (plusp @@resp_bytes))' ${JSON_INPUT} > /dev/null"
+
+run_bench "09-mutator-tsv" \
+    "-m '(anonip! @id.orig_h @id.resp_h)' ${ZEEK_INPUT} > /dev/null"
+
+run_bench "10-mutator-json" \
+    "-m '(anonip! @id.orig_h @id.resp_h)' ${JSON_INPUT} > /dev/null"
+
+run_bench "11-mutator-filter-tsv" \
+    "-m '(setf @total_bytes (+ @@orig_bytes @@resp_bytes))' -x '(plusp @total_bytes)' ${ZEEK_INPUT} > /dev/null"
+
+run_bench "12-mutator-filter-json" \
+    "-m '(setf @total_bytes (+ @@orig_bytes @@resp_bytes))' -x '(plusp @total_bytes)' ${JSON_INPUT} > /dev/null"
+
+run_bench "13-format-zeek-to-json" \
+    "-f json ${ZEEK_INPUT} > /dev/null"
+
+run_bench "14-format-json-to-zeek" \
+    "-f zeek ${JSON_INPUT} > /dev/null"
+
 echo "=== Benchmark complete ==="
-echo "Results written to: ${OUTPUT_CSV}"

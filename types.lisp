@@ -9,6 +9,7 @@
   line
   types
   fields
+  offsets
   row-strings
   row
   (field->idx (make-hash-table) :type hash-table)
@@ -28,44 +29,44 @@
 (na:enable-ip-syntax)
 (cl-interpol:enable-interpol-syntax)
 
-(declaim (ftype (function (simple-string) double-float) fast-parse-double))
-(defun fast-parse-double (string)
-  "Parse STRING to double-float. Handles [-]digits[.digits][e|E[-|+]digits].
+(declaim (ftype (function (simple-string &key (:start fixnum) (:end fixnum)) double-float) fast-parse-double))
+(defun fast-parse-double (string &key (start 0) (end (length string)))
+  "Parse STRING within [START, END) to double-float. Handles [-]digits[.digits][e|E[-|+]digits].
 Avoids the full CL reader overhead of READ-FROM-STRING by doing direct
 character-level parsing with rational arithmetic for exact rounding."
   (declare (optimize (speed 3) (safety 0))
-           (type simple-string string))
-  (let ((len (length string))
-        (pos 0)
+           (type simple-string string)
+           (type fixnum start end))
+  (let ((pos start)
         (neg nil)
         (significand 0)
         (n-frac 0)
         (exp-part 0)
         (exp-neg nil))
-    (declare (fixnum pos len n-frac exp-part))
+    (declare (fixnum pos n-frac exp-part))
     ;; Sign
-    (when (and (< pos len) (char= (schar string pos) #\-))
+    (when (and (< pos end) (char= (schar string pos) #\-))
       (setf neg t)
       (incf pos))
     ;; Integer part
-    (loop while (and (< pos len) (digit-char-p (schar string pos)))
+    (loop while (and (< pos end) (digit-char-p (schar string pos)))
           do (setf significand (+ (* significand 10) (- (char-code (schar string pos)) 48)))
              (incf pos))
     ;; Fractional part — keep accumulating into significand, count digits
-    (when (and (< pos len) (char= (schar string pos) #\.))
+    (when (and (< pos end) (char= (schar string pos) #\.))
       (incf pos)
-      (loop while (and (< pos len) (digit-char-p (schar string pos)))
+      (loop while (and (< pos end) (digit-char-p (schar string pos)))
             do (setf significand (+ (* significand 10) (- (char-code (schar string pos)) 48)))
                (incf n-frac)
                (incf pos)))
     ;; Exponent
-    (when (and (< pos len) (or (char= (schar string pos) #\e) (char= (schar string pos) #\E)))
+    (when (and (< pos end) (or (char= (schar string pos) #\e) (char= (schar string pos) #\E)))
       (incf pos)
-      (when (and (< pos len) (or (char= (schar string pos) #\-) (char= (schar string pos) #\+)))
+      (when (and (< pos end) (or (char= (schar string pos) #\-) (char= (schar string pos) #\+)))
         (when (char= (schar string pos) #\-)
           (setf exp-neg t))
         (incf pos))
-      (loop while (and (< pos len) (digit-char-p (schar string pos)))
+      (loop while (and (< pos end) (digit-char-p (schar string pos)))
             do (setf exp-part (+ (* exp-part 10) (- (char-code (schar string pos)) 48)))
                (incf pos)))
     ;; Combine using rational arithmetic: significand * 10^(exp - n-frac)
