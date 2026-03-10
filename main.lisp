@@ -265,7 +265,13 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
                              :short-name #\d
                              :long-name "debug-compiled-functions"
                              :initial-value nil
-                             :key :debug-compiled-functions)))
+                             :key :debug-compiled-functions)
+        (clingon:make-option :boolean/true
+                             :description "Non-interactive mode (drop all lines with errors)"
+                             :short-name #\n
+                             :long-name "non-interactive-mode"
+                             :initial-value nil
+                             :key :non-interactive-mode)))
 
 (defun cat/handler (cmd)
   (in-package :cleek)
@@ -276,9 +282,14 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
         (format (string->keyword (clingon:getopt cmd :format)))
         (filter-expr (clingon:getopt cmd :filter-expr))
         (mutator-expr (clingon:getopt cmd :mutator-expr))
-        (*debug-compiled-functions* (clingon:getopt cmd :debug-compiled-functions)))
+        (*debug-compiled-functions* (clingon:getopt cmd :debug-compiled-functions))
+        (non-interactive-mode? (clingon:getopt cmd :non-interactive-mode)))
     (init-common-filters-and-mutators)
-    (handler-bind ((error (lambda (condition) (invoke-debugger condition))))
+    (handler-bind ((error (lambda (condition) (if non-interactive-mode?
+                                             (if (find-restart 'drop-line condition)
+                                                 (invoke-restart 'drop-line)
+                                                 (format *standard-error* "Failed to proceed automatically. Exiting...~%"))
+                                             (invoke-debugger condition)))))
       (handler-case
           (apply #'cat-logs-string output-file format mutator-expr filter-expr args)
         ;; Still doesn't build on ECL due to not being able to find ASDF/SYSTEM::FIND-SYSTEM even if i add "asdf" to the
@@ -298,7 +309,7 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.14.1"
+   :version "0.15.0"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
