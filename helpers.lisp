@@ -127,6 +127,12 @@
 (defalias private? #'na:private? "Alias for NETADDR:PRIVATE? which returns T if the IP address is privately routable. Requires a NETADDR::IP-LIKE (so fully parse with @@).")
 (defalias reserved? #'na:reserved? "Alias for NETADDR:RESERVED? which returns T if the IP address is reserved. Requires a NETADDR::IP-LIKE (so fully parse with @@).")
 
+(defun routes (ip-like)
+  (cond ((private? ip-like) "private")
+        ((public? ip-like) "public")
+        ((reserved? ip-like) "reserved")
+        (t "other")))
+
 ;; is there a reasonable way to anonymize domains?
 
 (defmacro ~ (regex field)
