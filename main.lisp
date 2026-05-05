@@ -34,7 +34,9 @@
 (defun ensure-fully-parsed-non-nil-func (full-columns)
   (when full-columns
     (let ((filters (cons 'and (mapcar (lambda (c) `(get-value log ,(or-nickname c) t)) full-columns))))
-      (values (compile nil `(lambda (log) (declare (ignorable log))
+      (values (compile nil `(lambda (log) (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+                                                       (ignorable log)
+                                                       (type zeek log))
                               ;; duplication of filter RESTART-CASE is a bit annoying.
                               (restart-case ,filters
                                 (drop-line () :report (lambda (stream)
@@ -43,6 +45,41 @@
               filters))))
 
 (defun cat-logs-string (output-file output-format mutator-expr filter-expr &rest input-files)
+  ;; Fast path: no filter, no mutator, same format → simple line copy
+  (when (and (null mutator-expr) (null filter-expr)
+             (not *debug-compiled-functions*)
+             (eq output-format :input-format))
+    (with-open-file (out output-file :direction :output :if-exists :supersede)
+      (when (zerop (length input-files))
+        (push "/dev/stdin" input-files))
+      (let ((first-file t)
+            (detected-format nil))
+        (dolist (file input-files)
+          (with-open-file (in file)
+            (when (and (null detected-format) (listen in))
+              (setf detected-format (infer-format in)))
+            (if (eq detected-format :json)
+                ;; JSON: just copy all lines
+                (loop for line = (read-line in nil)
+                      while line
+                      do (write-line line out))
+                ;; Zeek: first file writes header, subsequent files skip headers
+                (loop for line = (read-line in nil)
+                      while line
+                      do (cond ((str:starts-with? "#close" line)
+                                ;; Skip #close markers from individual files
+                                nil)
+                               ((and (not first-file) (char= #\# (char line 0)))
+                                ;; Skip header lines from subsequent files
+                                nil)
+                               (t (write-line line out)))))
+            (setf first-file nil)))
+        (when (eq detected-format :zeek)
+          (format out (format nil "#close~a~~a~%" *zeek-field-separator*)
+                  (timestamp-to-zeek-open-close-string (local-time:now))))))
+    (return-from cat-logs-string))
+
+  ;; Normal path (existing code continues)
   (multiple-value-bind (mutator-func mutator-columns mutator-full-columns mutators) (compile-runtime-mutators mutator-expr)
     (multiple-value-bind (filter-func filter-columns filter-full-columns filters) (compile-runtime-filters filter-expr)
       (multiple-value-bind (ensure-truthy-parse-func ensure-filters)
@@ -174,7 +211,9 @@
         (let ((raw-filters (with-input-from-string (in s)
                              (read in nil))))
           (multiple-value-bind (filters columns full-columns) (expand-columns raw-filters)
-            (values (compile nil `(lambda (log) (declare (ignorable log))
+            (values (compile nil `(lambda (log) (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+                                                         (ignorable log)
+                                                         (type zeek log))
                                     (restart-case ,(macroexpand-1 filters)
                                       (drop-line () :report (lambda (stream)
                                                               (format stream "DROP-LINE: \"~a\"" (zeek-line log))) nil)
@@ -222,7 +261,10 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
           (let* ((raw-mutators (with-input-from-string (in s)
                                  (read-all-progn in))))
             (multiple-value-bind (mutators columns full-columns) (expand-columns (update-setters raw-mutators))
-              (values (compile nil `(lambda (log) (declare (ignorable log)) ,(macroexpand-1 mutators)))
+              (values (compile nil `(lambda (log) (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+                                                           (ignorable log)
+                                                           (type zeek log))
+                                     ,(macroexpand-1 mutators)))
                       columns
                       full-columns
                       mutators))))

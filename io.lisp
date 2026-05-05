@@ -41,10 +41,14 @@
     (:json (gethash field (zeek-map zeek-log)))))
 
 (defun get-value (zeek-log field &optional fully-parsed?)
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log)
+           (type keyword field))
   (ecase (zeek-format zeek-log)
     (:zeek (let ((val (if (and (zeek-created-fields zeek-log) (not (has-field? zeek-log field)))
                           (gethash field (zeek-map zeek-log))
-                          (aref (zeek-row-strings zeek-log) (field->idx zeek-log field)))))
+                          (aref (the simple-vector (zeek-row-strings zeek-log))
+                                (the fixnum (field->idx zeek-log field))))))
              (if fully-parsed?
                  (parse-zeek-type val (field->type zeek-log field) t)
                  val)))
@@ -53,10 +57,15 @@
                (gethash field (zeek-map zeek-log))))))
 
 (defun (setf get-value) (new-value zeek-log field &optional fully-parsed?)
-  (declare (ignore fully-parsed?))
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (ignore fully-parsed?)
+           (type zeek zeek-log)
+           (type keyword field))
   (if (has-field? zeek-log field)
       (prog1 (ecase (zeek-format zeek-log)
-               (:zeek (setf (aref (zeek-row-strings zeek-log) (field->idx zeek-log field)) new-value))
+               (:zeek (setf (aref (the simple-vector (zeek-row-strings zeek-log))
+                                  (the fixnum (field->idx zeek-log field)))
+                             new-value))
                (:json (setf (gethash field (zeek-map zeek-log)) new-value)))
         (setf (zeek-modified? zeek-log) t))
       (prog1 (ecase (zeek-format zeek-log)
@@ -84,6 +93,8 @@
 
 (defun next-record (zeek-log)
   ;; TODO: Add condition handling for when the header differs.
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log))
   (progn (setf (zeek-line zeek-log) (read-line (zeek-stream zeek-log) nil)
                (zeek-status zeek-log) :unparsed
                (zeek-modified? zeek-log) nil)
@@ -139,6 +150,27 @@
            (mapcar (lambda (s) (close s :abort ,abort?)) ,streams)
            (close (zeek-stream ,log) :abort ,abort?))))))
 
+(defun split-tab-to-vector (line)
+  "Split LINE on tabs into simple-vector of strings.
+Single-pass tab splitter: collect fields via POSITION, then copy to vector."
+  (declare (optimize (speed 3) (safety 1))
+           (type simple-string line))
+  (let ((fields nil)
+        (nfields 0)
+        (start 0))
+    (declare (type fixnum nfields start))
+    (loop
+      (let ((tab-pos (position #\Tab line :start start)))
+        (push (subseq line start (or tab-pos (length line))) fields)
+        (incf nfields)
+        (unless tab-pos (return))
+        (setf start (the fixnum (1+ tab-pos)))))
+    (let ((result (make-array nfields)))
+      (loop for i from (1- nfields) downto 0
+            for f in fields
+            do (setf (svref result i) f))
+      result)))
+
 ;; TODO: if FIELDS is non-NIL, only parse those fields.
 ;; just make ROW-STRINGS only as long as the number of fields you have
 ;; then ENSURE-ROW will just work.
@@ -147,11 +179,15 @@
 ;; for the delimiters and it would only be noticeably faster if there aren't a
 ;; lot of fields and they're early on in the line.
 (defun ensure-row-strings (zeek-log &optional fields)
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log))
   (when (eq :unparsed (zeek-status zeek-log))
     (if fields
         (error "Parsing of individual fields not implemented.")
-        (setf (zeek-row-strings zeek-log) (coerce (split-sequence #\Tab (zeek-line zeek-log)) 'vector)
-              (zeek-status zeek-log) :row-strings))))
+        (let ((line (zeek-line zeek-log)))
+          (declare (type simple-string line))
+          (setf (zeek-row-strings zeek-log) (split-tab-to-vector line)
+                (zeek-status zeek-log) :row-strings)))))
 
 ;; TODO: if FIELDS is non-NIL, only parse those fields.
 ;; TODO: you should do a quick check to see if only parsing the needed fields
@@ -176,9 +212,15 @@
                    (gethash field (zeek-field->type zeek-log)) type))))
 
 (defun field->idx (zeek-log field)
-  (gethash field (zeek-field->idx zeek-log)))
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log)
+           (type keyword field))
+  (the (or null fixnum) (gethash field (zeek-field->idx zeek-log))))
 
 (defun field->type (zeek-log field)
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log)
+           (type keyword field))
   (gethash field (zeek-field->type zeek-log)))
 
 ;; TODO: i probably don't need this anymore. just something that
@@ -246,6 +288,9 @@
                  (format stream "~a" (generate-zeek-header zeek-log)))))))
 
 (defun write-zeek-log-line (zeek-log stream format)
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log)
+           (type keyword format))
   (let ((same-format? (eq format (zeek-format zeek-log))))
     (cond ((and (not (zeek-modified? zeek-log)) same-format?)
            (write-line (zeek-line zeek-log) stream))
