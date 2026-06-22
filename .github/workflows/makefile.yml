@@ -9,7 +9,10 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
 
     env:
       LISP: sbcl-bin
@@ -48,6 +51,6 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        name: cleek
+        name: cleek-${{ matrix.os }}
         path: bin/cleek
         overwrite: true
