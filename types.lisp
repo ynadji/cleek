@@ -136,20 +136,35 @@ every key of every record when parsing JSON logs."
 
 (%init-zeek-type-parsers)
 
+(defun %compound-element-type (type)
+  "Element type keyword of compound types like :SET[ADDR] or :VECTOR[COUNT],
+NIL for anything else."
+  (cl-ppcre:register-groups-bind (nil primitive-type-str)
+      ("(set|vector)\\[(.*?)\\]" (keyword->string type))
+    (string->keyword primitive-type-str)))
+
 (defun %get-compound-parser (type)
-  "For compound types like :SET[ADDR] or :VECTOR[COUNT], extract the element
-type, look up its parser, and return a closure that splits on separator and
-maps the element parser. Caches the result in *zeek-type-parsers*."
-  (let* ((type-string (keyword->string type)))
-    (cl-ppcre:register-groups-bind (nil primitive-type-str)
-        ("(set|vector)\\[(.*?)\\]" type-string)
-      (let ((element-parser (gethash (string->keyword primitive-type-str) *zeek-type-parsers*)))
-        (when element-parser
-          (let ((parser (lambda (field)
-                          (map 'vector (lambda (f) (funcall element-parser f))
-                               (split-sequence *zeek-set-separator* field)))))
-            (setf (gethash type *zeek-type-parsers*) parser)
-            parser))))))
+  "For compound types like :SET[ADDR] or :VECTOR[COUNT], look up the element
+type's parser and return a closure that splits on separator and maps it.
+Caches the result in *zeek-type-parsers*."
+  (ax:when-let* ((element-type (%compound-element-type type))
+                 (element-parser (gethash element-type *zeek-type-parsers*)))
+    (setf (gethash type *zeek-type-parsers*)
+          (lambda (field)
+            (map 'vector element-parser
+                 (split-sequence *zeek-set-separator* field))))))
+
+(defun %type-handler (table type make-compound-handler default-handler)
+  "Return TABLE's handler for TYPE, computing and caching it on first miss:
+compound set[...]/vector[...] types get (funcall MAKE-COMPOUND-HANDLER
+element-type), anything else DEFAULT-HANDLER. Caching the pass-through
+DEFAULT-HANDLER matters: these lookups run per field per record, and the old
+fallthrough re-did keyword->string + regex matching every time."
+  (or (gethash type table)
+      (setf (gethash type table)
+            (ax:if-let ((element-type (%compound-element-type type)))
+              (funcall make-compound-handler element-type)
+              default-handler))))
 
 ;; TODO: think about this more. For port, 0 makes sense since it's reserved and should never actually be used. but for
 ;; something like RCODE, which is a count, 0 is a valid value. I suppose we're typically only doing math on these things
@@ -272,32 +287,21 @@ maps the element parser. Caches the result in *zeek-type-parsers*."
   (cond ((eq 'cl:null field) "-")
         ((stringp field)
          field)
-        (t (multiple-value-bind (func found) (gethash type *zeek-stringify*)
-             (if found
-                 (funcall func field)
-                 ;; compound type — extract element type once
-                 (let ((type-string (keyword->string type)))
-                   (cl-ppcre:register-groups-bind (nil primitive-type)
-                       ("(set|vector)\\[(.*?)\\]" type-string)
-                     (str:join *zeek-set-separator*
-                               (map 'list (lambda (f) (unparse-zeek-type f (string->keyword primitive-type)))
-                                    field)))))))))
+        (t (funcall (%type-handler *zeek-stringify* type
+                                   (lambda (element-type)
+                                     (lambda (f) (str:join *zeek-set-separator*
+                                                      (map 'list (lambda (x) (unparse-zeek-type x element-type)) f))))
+                                   (constantly nil))
+                    field))))
 
 (defun jsonify-zeek-type (field type)
-  (cond ((stringp field)
-         field)
-        (t (multiple-value-bind (func found) (gethash type *zeek-jsonify*)
-             (if found
-                 (funcall func field)
-                 ;; might be compound or just pass-through
-                 (let ((type-string (keyword->string type)))
-                   (if (or (str:starts-with? "set" type-string)
-                           (str:starts-with? "vector" type-string))
-                       (cl-ppcre:register-groups-bind (nil primitive-type)
-                           ("(set|vector)\\[(.*?)\\]" type-string)
-                         (map 'vector (lambda (f) (jsonify-zeek-type f (string->keyword primitive-type)))
-                              field))
-                       field)))))))
+  (if (stringp field)
+      field
+      (funcall (%type-handler *zeek-jsonify* type
+                              (lambda (element-type)
+                                (lambda (f) (map 'vector (lambda (x) (jsonify-zeek-type x element-type)) f)))
+                              #'identity)
+               field)))
 
 (defun jsonify-zeek-map (zeek-map)
   (loop for field being the hash-key of zeek-map
@@ -312,18 +316,11 @@ maps the element parser. Caches the result in *zeek-type-parsers*."
   zeek-map)
 
 (defun zeekify-json-type (field type)
-  (multiple-value-bind (func found) (gethash type *json-zeekify*)
-    (if found
-        (funcall func field)
-        ;; might be compound or just pass-through
-        (let ((type-string (keyword->string type)))
-          (if (or (str:starts-with? "set" type-string)
-                  (str:starts-with? "vector" type-string))
-              (cl-ppcre:register-groups-bind (nil primitive-type)
-                  ("(set|vector)\\[(.*?)\\]" type-string)
-                (map 'vector (lambda (f) (zeekify-json-type f (string->keyword primitive-type)))
-                     field))
-              field)))))
+  (funcall (%type-handler *json-zeekify* type
+                          (lambda (element-type)
+                            (lambda (f) (map 'vector (lambda (x) (zeekify-json-type x element-type)) f)))
+                          #'identity)
+           field))
 
 (defun zeekify-json-map (json-map)
   (loop for field being the hash-key of json-map
