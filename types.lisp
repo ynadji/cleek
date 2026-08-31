@@ -82,7 +82,12 @@ character-level parsing with rational arithmetic for exact rounding."
 (defvar *zeek-unset-field* #\-)
 (defvar *zeek-empty-field* "(empty)")
 
-(defun string->keyword (s) (ax:make-keyword (str:upcase s)))
+(defvar *string->keyword-cache* (make-hash-table :test 'equal))
+(defun string->keyword (s)
+  "Memoized: upcasing + interning per call is expensive and this is called for
+every key of every record when parsing JSON logs."
+  (or (gethash s *string->keyword-cache*)
+      (setf (gethash s *string->keyword-cache*) (ax:make-keyword (str:upcase s)))))
 (defun keyword->string (k) (str:downcase (string k)))
 
 (defvar *zeek-open-close-time-format* '(:year "-" (:month 2) "-" (:day 2) "-" (:hour12 2) "-" (:min 2) "-" (:sec 2))
