@@ -274,8 +274,10 @@ fallthrough re-did keyword->string + regex matching every time."
            (type string field)
            (type keyword type))
   ;; unset should probably be 'null and empty should probably be #() (since '() is eq to nil)
-  (cond ((string= field (string *zeek-unset-field*)) (if unset-is-nil? nil 'cl::null))
-        ((string= field (string *zeek-empty-field*))
+  ;; NB: *zeek-unset-field* is a character; (string #\-) here would allocate on every call.
+  (cond ((and (= 1 (length field)) (char= *zeek-unset-field* (char field 0)))
+         (if unset-is-nil? nil 'cl::null))
+        ((string= field *zeek-empty-field*)
          (if (eq type :string) "" #()))
         (t (let ((parser (or (gethash type *zeek-type-parsers*)
                              (%get-compound-parser type))))
