@@ -342,6 +342,19 @@
           (progn (ensure-fields zeek-log)
                  (format stream "~a" (generate-zeek-header zeek-log)))))))
 
+(defun %write-map-as-zeek-line (zeek-log stream)
+  "Write ZEEK-LOG's map as a separated zeek line. Replaces a FORMAT call whose
+control string was itself built with FORMAT per record, plus a collected list."
+  (loop for field-name in (zeek-fields zeek-log)
+        for type in (zeek-types zeek-log)
+        for first = t then nil
+        unless first do (write-char *zeek-field-separator* stream)
+          do (write-string (or (stringify-json-type-to-zeek-string
+                                (gethash field-name (zeek-map zeek-log) "-") type)
+                               "-")
+                           stream))
+  (terpri stream))
+
 (defun write-zeek-log-line (zeek-log stream format)
   (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
            (type zeek zeek-log)
@@ -356,10 +369,7 @@
              (:json (jzon:stringify (if (eq (zeek-status zeek-log) :zeek-map)
                                         (jsonify-zeek-map (zeek-map zeek-log))
                                         (zeek-map zeek-log)) :stream stream) (terpri stream))
-             (:zeek (format stream (format nil "~~{~~a~~^~C~~}~~%" *zeek-field-separator*)
-                            (loop for field-name in (zeek-fields zeek-log)
-                                  for type in (zeek-types zeek-log)
-                                  collect (or (stringify-json-type-to-zeek-string (gethash field-name (zeek-map zeek-log) "-") type) "-"))))))
+             (:zeek (%write-map-as-zeek-line zeek-log stream))))
           ((and same-format? (zeek-modified? zeek-log))
            (ecase format
              (:json (jzon:stringify (if (eq (zeek-status zeek-log) :zeek-map)
@@ -396,8 +406,5 @@
                                           (jsonify-zeek-map (zeek-map zeek-log))
                                           (zeek-map zeek-log)) :stream stream) (terpri stream))
                (:zeek (if (zeek-types zeek-log)
-                          (format stream (format nil "~~{~~a~~^~C~~}~~%" *zeek-field-separator*)
-                                  (loop for field-name in (zeek-fields zeek-log)
-                                        for type in (zeek-types zeek-log)
-                                        collect (or (stringify-json-type-to-zeek-string (gethash field-name (zeek-map zeek-log) "-") type) "-")))
+                          (%write-map-as-zeek-line zeek-log stream)
                           (error "Couldn't infer zeek log format. Cannot properly build Zeek log header."))))))))
