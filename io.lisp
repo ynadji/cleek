@@ -235,26 +235,6 @@
           (fill (zeek-row-strings zeek-log) nil)
           (setf (zeek-status zeek-log) :row-strings)))))
 
-;; TODO: if FIELDS is non-NIL, only parse those fields.
-;; TODO: you should do a quick check to see if only parsing the needed fields
-;; is any faster than just parsing all of them and by how much.
-(defun ensure-row (zeek-log &optional fields)
-  (unless (eq :row (zeek-status zeek-log))
-    (ensure-row-strings zeek-log fields)
-    (if fields
-        (error "Parsing of individual fields not implemented.")
-        (let ((offsets (zeek-offsets zeek-log))
-              (line (zeek-line zeek-log)))
-          (setf (zeek-row zeek-log)
-                (coerce (loop for type in (zeek-types zeek-log)
-                              for idx from 0
-                              for field = (or (svref (zeek-row-strings zeek-log) idx)
-                                              (subseq line
-                                                      (if (zerop idx) (aref offsets idx) (1+ (aref offsets idx)))
-                                                      (aref offsets (1+ idx))))
-                              collect (parse-zeek-type field type)) 'vector)
-                (zeek-status zeek-log) :row)))))
-
 (defun ensure-fields->idx (zeek-log)
   (when (zerop (hash-table-count (zeek-field->idx zeek-log)))
     (ensure-fields zeek-log)

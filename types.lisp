@@ -11,7 +11,6 @@
   fields
   offsets
   row-strings
-  row
   (field->idx (make-hash-table) :type hash-table)
   (field->type (make-hash-table) :type hash-table)
   (status :unparsed :type keyword) ; :unparsed :bytes :? :string-map :parsed-map
