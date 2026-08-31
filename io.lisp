@@ -134,32 +134,36 @@
   ;; TODO: Add condition handling for when the header differs.
   (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
            (type zeek zeek-log))
-  (progn (setf (zeek-line zeek-log) (read-line (zeek-stream zeek-log) nil)
-               (zeek-status zeek-log) :unparsed
-               (zeek-modified? zeek-log) nil)
-         (clrhash (zeek-map zeek-log))
-         (cond ((str:starts-with? "#close" (zeek-line zeek-log))
-                (next-record zeek-log))
-               ;; new header
-               ((str:starts-with? "#" (zeek-line zeek-log))
-                (let ((prev-fields (zeek-fields zeek-log)))
-                  (parse-zeek-header zeek-log)
-                  (let ((fields-diff (set-exclusive-or prev-fields (zeek-fields zeek-log))))
-                    (when (and prev-fields fields-diff)
-                      (error "Fields differ in zeek logs!~%	Old: ~a~%	New: ~a~%	Diff: ~a~%" prev-fields (zeek-fields zeek-log) fields-diff)))
-                  ;; skip empty files that go directly from header to #close.
-                  (when (str:starts-with? "#close" (zeek-line zeek-log))
-                    (next-record zeek-log)))
-                (when (and (zeek-line zeek-log) (zeek-accessed-columns zeek-log))
-                  (ecase (zeek-format zeek-log)
-                    (:zeek (ensure-row-strings zeek-log))
-                    (:json (ensure-map zeek-log))))
-                zeek-log)
-               (t (when (and (zeek-line zeek-log) (zeek-accessed-columns zeek-log))
-                    (ecase (zeek-format zeek-log)
-                      (:zeek (ensure-row-strings zeek-log))
-                      (:json (ensure-map zeek-log))))
-                  zeek-log))))
+  (let ((line (setf (zeek-line zeek-log) (read-line (zeek-stream zeek-log) nil))))
+    (setf (zeek-status zeek-log) :unparsed
+          (zeek-modified? zeek-log) nil)
+    (unless (zerop (hash-table-count (zeek-map zeek-log)))
+      (clrhash (zeek-map zeek-log)))
+    (cond ;; Normal record (or EOF) — the common case, checked with a single
+          ;; char compare instead of two str:starts-with? calls per line.
+          ((or (null line) (zerop (length line)) (char/= #\# (char line 0)))
+           (when (and line (zeek-accessed-columns zeek-log))
+             (ecase (zeek-format zeek-log)
+               (:zeek (ensure-row-strings zeek-log))
+               (:json (ensure-map zeek-log))))
+           zeek-log)
+          ((str:starts-with? "#close" line)
+           (next-record zeek-log))
+          ;; new header
+          (t
+           (let ((prev-fields (zeek-fields zeek-log)))
+             (parse-zeek-header zeek-log)
+             (let ((fields-diff (set-exclusive-or prev-fields (zeek-fields zeek-log))))
+               (when (and prev-fields fields-diff)
+                 (error "Fields differ in zeek logs!~%	Old: ~a~%	New: ~a~%	Diff: ~a~%" prev-fields (zeek-fields zeek-log) fields-diff)))
+             ;; skip empty files that go directly from header to #close.
+             (when (str:starts-with? "#close" (zeek-line zeek-log))
+               (next-record zeek-log)))
+           (when (and (zeek-line zeek-log) (zeek-accessed-columns zeek-log))
+             (ecase (zeek-format zeek-log)
+               (:zeek (ensure-row-strings zeek-log))
+               (:json (ensure-map zeek-log))))
+           zeek-log))))
 
 (defmacro with-zeek-log ((log filepath &optional columns) &body body)
   (ax:with-gensyms (abort?)

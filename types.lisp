@@ -104,8 +104,10 @@ every key of every record when parsing JSON logs."
      (coerce (/ (local-time:nsec-of ts) (expt 10 6)) 'double-float)))
 
 (defun zeek-ts-string-to-timestamp (s)
-  (destructuring-bind (secs nsecs) (mapcar #'parse-integer (split-sequence #\. s))
-    (local-time:unix-to-timestamp secs :nsec nsecs)))
+  (let ((dot (position #\. s)))
+    (local-time:unix-to-timestamp
+     (parse-integer s :end dot)
+     :nsec (if dot (parse-integer s :start (1+ dot)) 0))))
 
 (defun double-to-timestamp (x)
   (multiple-value-bind (secs nsecs) (truncate x)
