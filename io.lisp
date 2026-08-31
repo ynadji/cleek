@@ -277,30 +277,24 @@
   (when (member (zeek-status zeek-log) '(:unparsed :row-strings))
     (ecase (zeek-format zeek-log)
       (:zeek
-       (if (eq :unparsed (zeek-status zeek-log))
-           ;; Unparsed: split directly from line (no offsets computed yet)
-           (loop for field in (split-sequence *zeek-field-separator* (zeek-line zeek-log))
-                 for name in (zeek-fields zeek-log)
-                 for type in (zeek-types zeek-log)
-                 do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)
-                          (zeek-status zeek-log) :zeek-map))
-           ;; Row-strings: use cached values (may include mutations), fallback to offsets
-           (let ((offsets (zeek-offsets zeek-log))
-                 (line (zeek-line zeek-log))
-                 (row-strings (zeek-row-strings zeek-log)))
-             (loop for name in (zeek-fields zeek-log)
-                   for type in (zeek-types zeek-log)
-                   for idx from 0
-                   for field = (or (svref row-strings idx)
-                                   (subseq line
-                                           (if (zerop idx) (aref offsets idx) (1+ (aref offsets idx)))
-                                           (aref offsets (1+ idx))))
-                   do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)
-                            (zeek-status zeek-log) :zeek-map)))))
+       ;; Compute offsets if still :unparsed, then read cached values (which
+       ;; may include mutations) from row-strings, falling back to offsets.
+       (ensure-row-strings zeek-log)
+       (let ((offsets (zeek-offsets zeek-log))
+             (line (zeek-line zeek-log))
+             (row-strings (zeek-row-strings zeek-log)))
+         (loop for name in (zeek-fields zeek-log)
+               for type in (zeek-types zeek-log)
+               for idx from 0
+               for field = (or (svref row-strings idx)
+                               (subseq line
+                                       (if (zerop idx) (aref offsets idx) (1+ (aref offsets idx)))
+                                       (aref offsets (1+ idx))))
+               do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)))
+         (setf (zeek-status zeek-log) :zeek-map)))
       (:json
-       (restart-case (progn (clrhash (zeek-map zeek-log))
-                            (setf (zeek-map zeek-log) (jzon:parse (zeek-line zeek-log) :key-fn #'string->keyword)
-                                  (zeek-status zeek-log) :jzon-map))
+       (restart-case (setf (zeek-map zeek-log) (jzon:parse (zeek-line zeek-log) :key-fn #'string->keyword)
+                           (zeek-status zeek-log) :jzon-map)
          (drop-line () :report (lambda (stream)
                                  (format stream "DROP-LINE: \"~a\"" (zeek-line zeek-log))) nil)
          (keep-line () t))))))
