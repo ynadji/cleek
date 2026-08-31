@@ -41,22 +41,64 @@
     (:json (gethash field (zeek-map zeek-log)))))
 
 (defun get-value (zeek-log field &optional fully-parsed?)
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log)
+           (type keyword field))
   (ecase (zeek-format zeek-log)
-    (:zeek (let ((val (if (and (zeek-created-fields zeek-log) (not (has-field? zeek-log field)))
-                          (gethash field (zeek-map zeek-log))
-                          (aref (zeek-row-strings zeek-log) (field->idx zeek-log field)))))
-             (if fully-parsed?
-                 (parse-zeek-type val (field->type zeek-log field) t)
-                 val)))
+    (:zeek (if (and (zeek-created-fields zeek-log) (not (has-field? zeek-log field)))
+                 ;; Created fields: read from zeek-map (unchanged)
+                 (let ((val (gethash field (zeek-map zeek-log))))
+                   (if fully-parsed?
+                       (parse-zeek-type val (field->type zeek-log field) t)
+                       val))
+                  ;; Regular fields: lazy materialization from offsets
+                  (let* ((idx (the fixnum (field->idx zeek-log field)))
+                         (cached (svref (zeek-row-strings zeek-log) idx)))
+                    (if cached
+                        (if fully-parsed?
+                            (parse-zeek-type cached (field->type zeek-log field) t)
+                            cached)
+                        (let* ((offsets (zeek-offsets zeek-log))
+                               (line (zeek-line zeek-log))
+                               (start (if (zerop idx)
+                                          (aref offsets idx)
+                                          (1+ (aref offsets idx))))
+                               (end (aref offsets (1+ idx)))
+                               (type (field->type zeek-log field)))
+                          (declare (type (simple-array fixnum (*)) offsets)
+                                   (type simple-string line)
+                                   (type fixnum start end))
+                          ;; For numeric types with fully-parsed?, parse directly
+                          ;; from line with :start/:end — avoids subseq allocation.
+                          (if (and fully-parsed?
+                                   ;; Not unset ("-") or empty "(empty)"
+                                   (/= (- end start) 1)
+                                   (member type '(:double :interval :count :int :port) :test #'eq))
+                              (case type
+                                ((:double :interval)
+                                 (fast-parse-double line :start start :end end))
+                                ((:count :int :port)
+                                 (parse-integer line :start start :end end)))
+                              ;; Non-numeric or needs subseq: materialize and cache
+                              (let ((val (subseq line start end)))
+                                (setf (svref (zeek-row-strings zeek-log) idx) val)
+                                (if fully-parsed?
+                                    (parse-zeek-type val type t)
+                                    val))))))))
     (:json (if fully-parsed?
                (zeekify-json-type (gethash field (zeek-map zeek-log)) (field->type zeek-log field))
                (gethash field (zeek-map zeek-log))))))
 
 (defun (setf get-value) (new-value zeek-log field &optional fully-parsed?)
-  (declare (ignore fully-parsed?))
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (ignore fully-parsed?)
+           (type zeek zeek-log)
+           (type keyword field))
   (if (has-field? zeek-log field)
       (prog1 (ecase (zeek-format zeek-log)
-               (:zeek (setf (aref (zeek-row-strings zeek-log) (field->idx zeek-log field)) new-value))
+               (:zeek (setf (aref (the simple-vector (zeek-row-strings zeek-log))
+                                  (the fixnum (field->idx zeek-log field)))
+                             new-value))
                (:json (setf (gethash field (zeek-map zeek-log)) new-value)))
         (setf (zeek-modified? zeek-log) t))
       (prog1 (ecase (zeek-format zeek-log)
@@ -75,6 +117,12 @@
     (ecase (zeek-format zeek-log)
       (:zeek (parse-zeek-header zeek-log))
       (:json (next-record zeek-log) (infer-log-path-fields-types zeek-log)))
+    ;; Pre-allocate offsets and row-strings vectors now that field count is known.
+    (when (zeek-fields zeek-log)
+      (setf (zeek-offsets zeek-log)
+            (make-array (1+ (length (zeek-fields zeek-log))) :element-type 'fixnum)
+            (zeek-row-strings zeek-log)
+            (make-array (length (zeek-fields zeek-log)) :initial-element nil)))
     (when (zeek-accessed-columns zeek-log)
       (ensure-fields->idx zeek-log)
       (ecase (zeek-format zeek-log)
@@ -84,6 +132,8 @@
 
 (defun next-record (zeek-log)
   ;; TODO: Add condition handling for when the header differs.
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log))
   (progn (setf (zeek-line zeek-log) (read-line (zeek-stream zeek-log) nil)
                (zeek-status zeek-log) :unparsed
                (zeek-modified? zeek-log) nil)
@@ -139,6 +189,29 @@
            (mapcar (lambda (s) (close s :abort ,abort?)) ,streams)
            (close (zeek-stream ,log) :abort ,abort?))))))
 
+(defun compute-offsets (line offsets)
+  "Scan LINE for tabs, store field boundaries in OFFSETS (pre-allocated).
+   OFFSETS[0] = 0 (start of field 0).
+   OFFSETS[i] for i=1..nfields-1 = tab position (exclusive end of field i-1).
+   OFFSETS[nfields] = (length line) (exclusive end of last field).
+   Field 0: (subseq line 0 (aref offsets 1)).
+   Field i>0: (subseq line (1+ (aref offsets i)) (aref offsets (1+ i)))."
+  (declare (optimize (speed 3) (safety 1))
+           (type simple-string line)
+           (type (simple-array fixnum (*)) offsets))
+  (let ((nfields (1- (length offsets))))
+    (declare (type fixnum nfields))
+    (setf (aref offsets 0) 0)
+    (loop with start fixnum = 0
+          for i fixnum from 1 below nfields
+          for tab-pos = (position #\Tab line :start start)
+          while tab-pos
+          do (setf (aref offsets i) (the fixnum tab-pos)
+                   start (the fixnum (1+ tab-pos)))
+          finally (loop for j fixnum from i to nfields
+                        do (setf (aref offsets j) (length line))))
+    (setf (aref offsets nfields) (length line))))
+
 ;; TODO: if FIELDS is non-NIL, only parse those fields.
 ;; just make ROW-STRINGS only as long as the number of fields you have
 ;; then ENSURE-ROW will just work.
@@ -147,11 +220,16 @@
 ;; for the delimiters and it would only be noticeably faster if there aren't a
 ;; lot of fields and they're early on in the line.
 (defun ensure-row-strings (zeek-log &optional fields)
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log))
   (when (eq :unparsed (zeek-status zeek-log))
     (if fields
         (error "Parsing of individual fields not implemented.")
-        (setf (zeek-row-strings zeek-log) (coerce (split-sequence #\Tab (zeek-line zeek-log)) 'vector)
-              (zeek-status zeek-log) :row-strings))))
+        (let ((line (zeek-line zeek-log)))
+          (declare (type simple-string line))
+          (compute-offsets line (zeek-offsets zeek-log))
+          (fill (zeek-row-strings zeek-log) nil)
+          (setf (zeek-status zeek-log) :row-strings)))))
 
 ;; TODO: if FIELDS is non-NIL, only parse those fields.
 ;; TODO: you should do a quick check to see if only parsing the needed fields
@@ -161,11 +239,17 @@
     (ensure-row-strings zeek-log fields)
     (if fields
         (error "Parsing of individual fields not implemented.")
-        (setf (zeek-row zeek-log)
-              (coerce (loop for type in (zeek-types zeek-log)
-                            for field across (zeek-row-strings zeek-log)
-                            collect (parse-zeek-type field type)) 'vector)
-              (zeek-status zeek-log) :row))))
+        (let ((offsets (zeek-offsets zeek-log))
+              (line (zeek-line zeek-log)))
+          (setf (zeek-row zeek-log)
+                (coerce (loop for type in (zeek-types zeek-log)
+                              for idx from 0
+                              for field = (or (svref (zeek-row-strings zeek-log) idx)
+                                              (subseq line
+                                                      (if (zerop idx) (aref offsets idx) (1+ (aref offsets idx)))
+                                                      (aref offsets (1+ idx))))
+                              collect (parse-zeek-type field type)) 'vector)
+                (zeek-status zeek-log) :row)))))
 
 (defun ensure-fields->idx (zeek-log)
   (when (zerop (hash-table-count (zeek-field->idx zeek-log)))
@@ -176,9 +260,15 @@
                    (gethash field (zeek-field->type zeek-log)) type))))
 
 (defun field->idx (zeek-log field)
-  (gethash field (zeek-field->idx zeek-log)))
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log)
+           (type keyword field))
+  (the (or null fixnum) (gethash field (zeek-field->idx zeek-log))))
 
 (defun field->type (zeek-log field)
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log)
+           (type keyword field))
   (gethash field (zeek-field->type zeek-log)))
 
 ;; TODO: i probably don't need this anymore. just something that
@@ -187,13 +277,26 @@
   (when (member (zeek-status zeek-log) '(:unparsed :row-strings))
     (ecase (zeek-format zeek-log)
       (:zeek
-       (loop for field in (if (eq :unparsed (zeek-status zeek-log))
-                              (split-sequence *zeek-field-separator* (zeek-line zeek-log))
-                              (coerce (zeek-row-strings zeek-log) 'list))
-             for name in (zeek-fields zeek-log)
-             for type in (zeek-types zeek-log)
-             do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)
-                      (zeek-status zeek-log) :zeek-map)))
+       (if (eq :unparsed (zeek-status zeek-log))
+           ;; Unparsed: split directly from line (no offsets computed yet)
+           (loop for field in (split-sequence *zeek-field-separator* (zeek-line zeek-log))
+                 for name in (zeek-fields zeek-log)
+                 for type in (zeek-types zeek-log)
+                 do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)
+                          (zeek-status zeek-log) :zeek-map))
+           ;; Row-strings: use cached values (may include mutations), fallback to offsets
+           (let ((offsets (zeek-offsets zeek-log))
+                 (line (zeek-line zeek-log))
+                 (row-strings (zeek-row-strings zeek-log)))
+             (loop for name in (zeek-fields zeek-log)
+                   for type in (zeek-types zeek-log)
+                   for idx from 0
+                   for field = (or (svref row-strings idx)
+                                   (subseq line
+                                           (if (zerop idx) (aref offsets idx) (1+ (aref offsets idx)))
+                                           (aref offsets (1+ idx))))
+                   do (setf (gethash name (zeek-map zeek-log)) (parse-zeek-type field type)
+                            (zeek-status zeek-log) :zeek-map)))))
       (:json
        (restart-case (progn (clrhash (zeek-map zeek-log))
                             (setf (zeek-map zeek-log) (jzon:parse (zeek-line zeek-log) :key-fn #'string->keyword)
@@ -246,6 +349,9 @@
                  (format stream "~a" (generate-zeek-header zeek-log)))))))
 
 (defun write-zeek-log-line (zeek-log stream format)
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type zeek zeek-log)
+           (type keyword format))
   (let ((same-format? (eq format (zeek-format zeek-log))))
     (cond ((and (not (zeek-modified? zeek-log)) same-format?)
            (write-line (zeek-line zeek-log) stream))
@@ -265,11 +371,22 @@
              (:json (jzon:stringify (if (eq (zeek-status zeek-log) :zeek-map)
                                         (jsonify-zeek-map (zeek-map zeek-log))
                                         (zeek-map zeek-log)) :stream stream) (terpri stream))
-             (:zeek (ecase (zeek-status zeek-log)
-                      (:row-strings (loop for i from 1 for field across (zeek-row-strings zeek-log)
-                                          do (princ field stream)
-                                          when (< i (length (zeek-row-strings zeek-log)))
-                                            do (princ *zeek-field-separator* stream))
+              (:zeek (ecase (zeek-status zeek-log)
+                       (:row-strings
+                        (let ((row (zeek-row-strings zeek-log))
+                              (offsets (zeek-offsets zeek-log))
+                              (line (zeek-line zeek-log))
+                              (nfields (length (zeek-row-strings zeek-log))))
+                          (loop for i from 0 below nfields
+                                when (plusp i) do (write-char *zeek-field-separator* stream)
+                                do (let ((val (svref row i)))
+                                     (if val
+                                         (write-string val stream)
+                                         (write-string line stream
+                                                       :start (if (zerop i)
+                                                                   (aref offsets i)
+                                                                   (1+ (aref offsets i)))
+                                                       :end (aref offsets (1+ i)))))))
                        (when (zeek-created-fields zeek-log)
                          (princ *zeek-field-separator* stream)
                          (loop for i from 1 for created-field in (zeek-created-fields zeek-log)
