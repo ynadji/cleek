@@ -51,11 +51,11 @@
   (is (timestamp= (make-timestamp :day 7769 :sec 77304 :nsec 78114)
                   (parse-zeek-type "1623187704.078114" :time)))
 
-  (is (netaddr:ip= #I("10.20.30.40") (parse-zeek-type "10.20.30.40" :addr)))
-  (is (netaddr:ip= #I("cafe:babe::") (parse-zeek-type "cafe:babe::" :addr)))
+  (is (netaddr:ip= #I"10.20.30.40" (parse-zeek-type "10.20.30.40" :addr)))
+  (is (netaddr:ip= #I"cafe:babe::" (parse-zeek-type "cafe:babe::" :addr)))
 
-  (is (netaddr:ip= #I("10.20.30.0/24") (parse-zeek-type "10.20.30.0/24" :subnet)))
-  (is (netaddr:ip= #I("cafe:babe::/94") (parse-zeek-type "cafe:babe::/94" :subnet)))
+  (is (netaddr:ip= #I"10.20.30.0/24" (parse-zeek-type "10.20.30.0/24" :subnet)))
+  (is (netaddr:ip= #I"cafe:babe::/94" (parse-zeek-type "cafe:babe::/94" :subnet)))
 
   (is (every #'netaddr:ip= #I("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :vector[addr])))
   (is (every #'netaddr:ip= #I("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :set[addr])))
@@ -211,10 +211,10 @@
     (is (= 1 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
-    (cat-logs-string test-output :zeek nil "(contains? #.#I(\"71.127.52.0/24\") #I(@r_h))" ssh-log)
+    (cat-logs-string test-output :zeek nil "(contains? #.#I\"71.127.52.0/24\" #I,@r_h)" ssh-log)
     (is (= 1 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
-    (cat-logs-string test-output :json nil "(contains? #.#I(\"71.127.52.0/24\") #I(@r_h))" ssh-log-json)
+    (cat-logs-string test-output :json nil "(contains? #.#I\"71.127.52.0/24\" #I,@r_h)" ssh-log-json)
     (is (= 1 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
@@ -387,7 +387,7 @@
     (is (= 224 (count-rows test-output)))
     (uiop:delete-file-if-exists test-output)
 
-    (cat-logs-string test-output :zeek "(setf @orig_label (anno @o_h #.#I(\"192.168.0.0/16\") \"192.168\" \".127.52.\" \"string-contains\" \'(\"fe80::1462:3ff9:fd68:b0fc\") \"list-contains\" t \"unknown\"))" nil dns-log)
+    (cat-logs-string test-output :zeek "(setf @orig_label (anno @o_h #.#I\"192.168.0.0/16\" \"192.168\" \".127.52.\" \"string-contains\" \'(\"fe80::1462:3ff9:fd68:b0fc\") \"list-contains\" t \"unknown\"))" nil dns-log)
 
     (let ((lines (uiop:read-file-lines test-output)))
       (dolist (line lines)
