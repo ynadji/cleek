@@ -55,6 +55,14 @@
             (format t "~%# mutators~%~s~%" mutators)
             (format t "~%# filters~%~s~%" filters)
             (return-from cat-logs-string))
+          ;; Byte-mode engine (zeek TSV → zeek TSV only); NIL means it
+          ;; declined and we fall through to the normal engine.
+          (when (and *byte-mode*
+                     (cat-logs-bytes output-file output-format
+                                     ensure-truthy-parse-func mutator-func filter-func
+                                     columns filters mutators
+                                     (or input-files (list "/dev/stdin"))))
+            (return-from cat-logs-string))
           (with-open-file (out output-file :direction :output :if-exists :supersede)
             (when (zerop (length input-files))
               (push "/dev/stdin" input-files))
@@ -278,7 +286,13 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
                              :short-name #\n
                              :long-name "non-interactive-mode"
                              :initial-value nil
-                             :key :non-interactive-mode)))
+                             :key :non-interactive-mode)
+        (clingon:make-option :boolean/true
+                             :description "Byte-mode engine (experimental; zeek TSV in/out only, falls back otherwise)"
+                             :short-name #\B
+                             :long-name "byte-mode"
+                             :initial-value nil
+                             :key :byte-mode)))
 
 (defun cat/handler (cmd)
   (in-package :cleek)
@@ -290,6 +304,7 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
         (filter-expr (clingon:getopt cmd :filter-expr))
         (mutator-expr (clingon:getopt cmd :mutator-expr))
         (*debug-compiled-functions* (clingon:getopt cmd :debug-compiled-functions))
+        (*byte-mode* (clingon:getopt cmd :byte-mode))
         (non-interactive-mode? (clingon:getopt cmd :non-interactive-mode)))
     (init-common-filters-and-mutators)
     (handler-bind ((error (lambda (condition) (if non-interactive-mode?

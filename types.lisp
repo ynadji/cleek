@@ -11,6 +11,7 @@
   fields
   offsets
   row-strings
+  bline ; byte-mode only: the record as a ub8 vector (see bio.lisp)
   (field->idx (make-hash-table) :type hash-table)
   (field->type (make-hash-table) :type hash-table)
   (status :unparsed :type keyword) ; :unparsed :bytes :? :string-map :parsed-map

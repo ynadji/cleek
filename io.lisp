@@ -59,28 +59,38 @@
                             (parse-zeek-type cached (field->type zeek-log field) t)
                             cached)
                         (let* ((offsets (zeek-offsets zeek-log))
-                               (line (zeek-line zeek-log))
+                               (bline (zeek-bline zeek-log))
                                (start (if (zerop idx)
                                           (aref offsets idx)
                                           (1+ (aref offsets idx))))
                                (end (aref offsets (1+ idx)))
                                (type (field->type zeek-log field)))
                           (declare (type (simple-array fixnum (*)) offsets)
-                                   (type simple-string line)
                                    (type fixnum start end))
                           ;; For numeric types with fully-parsed?, parse directly
-                          ;; from line with :start/:end — avoids subseq allocation.
+                          ;; with :start/:end — avoids subseq allocation.
                           (if (and fully-parsed?
                                    ;; Not unset ("-") or empty "(empty)"
                                    (/= (- end start) 1)
                                    (member type '(:double :interval :count :int :port) :test #'eq))
-                              (case type
-                                ((:double :interval)
-                                 (fast-parse-double line :start start :end end))
-                                ((:count :int :port)
-                                 (parse-integer line :start start :end end)))
+                              (if bline
+                                  (case type
+                                    ((:double :interval)
+                                     (%fast-parse-double-u8 bline start end))
+                                    ((:count :int :port)
+                                     (%parse-integer-u8 bline start end)))
+                                  (let ((line (zeek-line zeek-log)))
+                                    (declare (type simple-string line))
+                                    (case type
+                                      ((:double :interval)
+                                       (fast-parse-double line :start start :end end))
+                                      ((:count :int :port)
+                                       (parse-integer line :start start :end end)))))
                               ;; Non-numeric or needs subseq: materialize and cache
-                              (let ((val (subseq line start end)))
+                              (let ((val (if bline
+                                             (%bytes->string bline start end)
+                                             (subseq (the simple-string (zeek-line zeek-log))
+                                                     start end))))
                                 (setf (svref (zeek-row-strings zeek-log) idx) val)
                                 (if fully-parsed?
                                     (parse-zeek-type val type t)
