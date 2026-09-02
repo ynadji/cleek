@@ -183,9 +183,27 @@
         ((consp tree) (or (%tree-member? sym (car tree))
                           (%tree-member? sym (cdr tree))))))
 
-(defun %zeek-file? (path)
-  (with-open-file (in path :element-type '(unsigned-byte 8) :if-does-not-exist nil)
-    (and in (eql 35 (read-byte in nil))))) ; #\#
+(defun %breader-peek-byte (r)
+  "First unconsumed byte without consuming it, or NIL at EOF. Used to sniff
+the format through the reader's own buffer: the stream must NOT be opened
+twice — a peek-then-reopen loses a whole buffered block on pipes like
+/dev/stdin."
+  (when (and (= (breader-pos r) (breader-end r)) (not (breader-eof r)))
+    (let ((n (read-sequence (breader-buf r) (breader-stream r))))
+      (setf (breader-pos r) 0
+            (breader-end r) n)
+      (when (zerop n)
+        (setf (breader-eof r) t))))
+  (when (< (breader-pos r) (breader-end r))
+    (aref (breader-buf r) (breader-pos r))))
+
+(defun %bline-starts-with? (prefix bline)
+  (declare (type simple-string prefix)
+           (type (simple-array (unsigned-byte 8) (*)) bline))
+  (and (<= (length prefix) (length bline))
+       (loop for c across prefix
+             for i from 0
+             always (= (char-code c) (aref bline i)))))
 
 (defun %parse-byte-header (r zeek-log)
   "Read header lines from R into ZEEK-LOG (mirrors PARSE-ZEEK-HEADER)."
@@ -212,57 +230,90 @@
 
 (defun cat-logs-bytes (output-file output-format ensure-truthy-parse-func
                        mutator-func filter-func columns filters mutators input-files)
-  "Byte-mode zeek→zeek engine. Returns T if handled, NIL to fall back."
+  "Byte-mode zeek→zeek engine. Returns T if handled, NIL to fall back.
+Every input stream is opened exactly once and its format sniffed through the
+reader's own buffer — a sniff-then-reopen would silently drop a buffered
+block on pipes like /dev/stdin."
   (when (or (not (member output-format '(:input-format :zeek)))
             (%tree-member? 'zeek-line filters)
-            (%tree-member? 'zeek-line mutators)
-            (notevery #'%zeek-file? input-files))
+            (%tree-member? 'zeek-line mutators))
     (return-from cat-logs-bytes nil))
-  (with-open-file (out output-file :direction :output :if-exists :supersede
-                       :element-type '(unsigned-byte 8))
-    (let ((first-file t))
-      (dolist (file input-files)
-        (with-open-file (in file :element-type '(unsigned-byte 8))
-          (let ((r (%make-breader :stream in))
-                (zeek-log (make-zeek :filepath file :format :zeek)))
-            (setf (zeek-accessed-columns zeek-log) columns)
-            (%parse-byte-header r zeek-log)
-            (ensure-fields->idx zeek-log)
-            (setf (zeek-offsets zeek-log)
-                  (make-array (1+ (length (zeek-fields zeek-log))) :element-type 'fixnum)
-                  (zeek-row-strings zeek-log)
-                  (make-array (length (zeek-fields zeek-log)) :initial-element nil))
-            (when first-file
-              (if (zeek-created-fields zeek-log)
-                  (%write-string-bytes (generate-zeek-header zeek-log) out)
-                  (dolist (line (zeek-raw-header zeek-log))
-                    (%write-string-bytes line out)
-                    (write-byte 10 out)))
-              (setf first-file nil))
-            (loop for bline = (breader-next-line r)
-                  while bline
-                  unless (or (zerop (length bline))
-                             ;; skip #close markers and repeated headers
-                             ;; (TODO: verify repeated headers match)
-                             (= 35 (aref bline 0)))
-                    do (setf (zeek-bline zeek-log) bline
-                             (zeek-status zeek-log) :unparsed
-                             (zeek-modified? zeek-log) nil)
-                       (unless (zerop (hash-table-count (zeek-map zeek-log)))
-                         (clrhash (zeek-map zeek-log)))
-                       (when columns
-                         (compute-offsets-u8 bline (zeek-offsets zeek-log))
-                         (fill (zeek-row-strings zeek-log) nil)
-                         (setf (zeek-status zeek-log) :row-strings))
-                       (when (or (null ensure-truthy-parse-func)
-                                 (funcall ensure-truthy-parse-func zeek-log))
-                         (when mutator-func
-                           (funcall mutator-func zeek-log))
-                         (when (or (null filter-func)
-                                   (funcall filter-func zeek-log))
-                           (%write-byte-log-line zeek-log out)))))))
-      (%write-string-bytes
-       (format nil "#close~a~a~%" *zeek-field-separator*
-               (timestamp-to-zeek-open-close-string (local-time:now)))
-       out)))
+  (let ((expected-fields nil)
+        (first-file t))
+    (flet ((process-file (r file out)
+             (let ((zeek-log (make-zeek :filepath file :format :zeek)))
+               (setf (zeek-accessed-columns zeek-log) columns)
+               (%parse-byte-header r zeek-log)
+               (if expected-fields
+                   (ax:when-let ((diff (set-exclusive-or expected-fields (zeek-fields zeek-log))))
+                     (error "Fields differ in zeek logs!~%	Old: ~a~%	New: ~a~%	Diff: ~a~%"
+                            expected-fields (zeek-fields zeek-log) diff))
+                   (setf expected-fields (zeek-fields zeek-log)))
+               (ensure-fields->idx zeek-log)
+               (setf (zeek-offsets zeek-log)
+                     (make-array (1+ (length (zeek-fields zeek-log))) :element-type 'fixnum)
+                     (zeek-row-strings zeek-log)
+                     (make-array (length (zeek-fields zeek-log)) :initial-element nil))
+               (when first-file
+                 (if (zeek-created-fields zeek-log)
+                     (%write-string-bytes (generate-zeek-header zeek-log) out)
+                     (dolist (line (zeek-raw-header zeek-log))
+                       (%write-string-bytes line out)
+                       (write-byte 10 out)))
+                 (setf first-file nil))
+               (loop for bline = (breader-next-line r)
+                     while bline
+                     do (cond ((zerop (length bline)) nil)
+                              ((= 35 (aref bline 0))
+                               ;; #close markers and repeated in-stream headers
+                               ;; (concatenated logs): skip, but verify the
+                               ;; schema hasn't changed under us.
+                               (when (%bline-starts-with? "#fields" bline)
+                                 (let ((new-fields
+                                         (mapcar #'string->keyword
+                                                 (rest (split-sequence *zeek-field-separator*
+                                                                       (%bytes->string bline 0 (length bline)))))))
+                                   (ax:when-let ((diff (set-exclusive-or expected-fields new-fields)))
+                                     (error "Fields differ in zeek logs!~%	Old: ~a~%	New: ~a~%	Diff: ~a~%"
+                                            expected-fields new-fields diff)))))
+                              (t
+                               (setf (zeek-bline zeek-log) bline
+                                     (zeek-status zeek-log) :unparsed
+                                     (zeek-modified? zeek-log) nil)
+                               (unless (zerop (hash-table-count (zeek-map zeek-log)))
+                                 (clrhash (zeek-map zeek-log)))
+                               (when columns
+                                 (compute-offsets-u8 bline (zeek-offsets zeek-log))
+                                 (fill (zeek-row-strings zeek-log) nil)
+                                 (setf (zeek-status zeek-log) :row-strings))
+                               (when (or (null ensure-truthy-parse-func)
+                                         (funcall ensure-truthy-parse-func zeek-log))
+                                 (when mutator-func
+                                   (funcall mutator-func zeek-log))
+                                 (when (or (null filter-func)
+                                           (funcall filter-func zeek-log))
+                                   (%write-byte-log-line zeek-log out)))))))))
+      ;; Sniff the first input through its single open stream before deciding.
+      (with-open-file (in1 (first input-files) :element-type '(unsigned-byte 8))
+        (let* ((r1 (%make-breader :stream in1))
+               (b (%breader-peek-byte r1)))
+          (unless (eql b 35) ; #\#
+            ;; Not zeek TSV. A seekable file can be handed back untouched (the
+            ;; normal engine reopens it by name); a pipe cannot be un-read.
+            (if (file-position in1 0)
+                (return-from cat-logs-bytes nil)
+                (error "byte-mode (-B): input on a non-seekable stream (pipe) is not zeek TSV; remove -B for this input")))
+          (with-open-file (out output-file :direction :output :if-exists :supersede
+                               :element-type '(unsigned-byte 8))
+            (process-file r1 (first input-files) out)
+            (dolist (file (rest input-files))
+              (with-open-file (in file :element-type '(unsigned-byte 8))
+                (let ((r (%make-breader :stream in)))
+                  (unless (eql 35 (%breader-peek-byte r))
+                    (error "byte-mode (-B): ~a is not zeek TSV but earlier input was; mixed formats are not supported" file))
+                  (process-file r file out))))
+            (%write-string-bytes
+             (format nil "#close~a~a~%" *zeek-field-separator*
+                     (timestamp-to-zeek-open-close-string (local-time:now)))
+             out))))))
   t)

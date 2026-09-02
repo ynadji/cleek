@@ -310,7 +310,7 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
     (handler-bind ((error (lambda (condition) (if non-interactive-mode?
                                              (if (find-restart 'drop-line condition)
                                                  (invoke-restart 'drop-line)
-                                                 (format *standard-error* "Failed to proceed automatically. Exiting...~%"))
+                                                 (format *error-output* "Failed to proceed automatically. Exiting...~%"))
                                              (invoke-debugger condition)))))
       (handler-case
           (apply #'cat-logs-string output-file format mutator-expr filter-expr args)
