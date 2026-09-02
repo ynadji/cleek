@@ -13,6 +13,7 @@
   :components ((:file "packages")
                (:file "types")
                (:file "io")
+               (:file "bio")
                (:file "helpers")
                (:file "main"))
   :build-operation "program-op"
