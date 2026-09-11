@@ -2,6 +2,30 @@
 
 (defvar *zeek-field-separator* #\Tab)
 
+(defvar *delimiter* nil
+  "Field delimiter character for -D/--delimiter-mode, NIL when not in delimiter
+mode. In delimiter mode input is plain text: every line is a record, fields are
+split on this character, and columns are referenced positionally as @N (1-based).")
+
+(defun parse-delimiter (s)
+  "Turn the -D/--delimiter-mode argument S into a single delimiter character.
+Accepts a literal character or the escapes \\t, \\r, \\s, and \\0 (shells that
+can produce the real character, e.g. -D $'\\t', work too)."
+  (cond ((null s) nil)
+        ((= 1 (length s)) (char s 0))
+        ((string= s "\\t") #\Tab)
+        ((string= s "\\r") #\Return)
+        ((string= s "\\s") #\Space)
+        ((string= s "\\0") (code-char 0))
+        (t (error "-D/--delimiter-mode takes a single character (or one of \\t, \\r, \\s, \\0); got ~s" s))))
+
+(defun delim-column-index (field)
+  "0-based row index for the delimiter-mode column keyword FIELD (:|3| => 2), or
+NIL if FIELD does not name a positive integer."
+  (let ((idx (ignore-errors (parse-integer (symbol-name field)))))
+    (when (and idx (plusp idx))
+      (1- idx))))
+
 (defun infer-format (stream)
   (ecase (peek-char nil stream)
     (#\{ :json)
@@ -38,7 +62,9 @@
 (defun has-field? (zeek-log field)
   (ecase (zeek-format zeek-log)
     (:zeek (field->idx zeek-log field))
-    (:json (gethash field (zeek-map zeek-log)))))
+    (:json (gethash field (zeek-map zeek-log)))
+    (:delim (ax:when-let ((idx (field->idx zeek-log field)))
+              (< idx (length (zeek-row-strings zeek-log)))))))
 
 (defun get-value (zeek-log field &optional fully-parsed?)
   (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
@@ -97,24 +123,51 @@
                                     val))))))))
     (:json (if fully-parsed?
                (zeekify-json-type (gethash field (zeek-map zeek-log)) (field->type zeek-log field))
-               (gethash field (zeek-map zeek-log))))))
+               (gethash field (zeek-map zeek-log))))
+    ;; Delimiter mode has no #types, so FULLY-PARSED? is ignored: @@N is @N. A
+    ;; row narrower than @N reads as "" rather than NIL, which is a string
+    ;; designator and would make (string= @9 "GET") compare against "NIL".
+    (:delim (let ((idx (field->idx zeek-log field))
+                  (row (zeek-row-strings zeek-log)))
+              (if (and idx (< (the fixnum idx) (length (the simple-vector row))))
+                  (svref row (the fixnum idx))
+                  "")))))
+
+(defun %set-delim-value (new-value zeek-log field)
+  "Write NEW-VALUE to delimiter-mode column FIELD (@N). Setting a column past the
+row's width appends it, padding any gap with empty fields, so a mutator can add
+columns to a plain text row."
+  (let ((idx (or (delim-column-index field)
+                 (error "delimiter mode (-D) only supports numeric column references like @1; got @~a"
+                        (keyword->string field))))
+        (row (zeek-row-strings zeek-log)))
+    (when (>= idx (length row))
+      (let ((grown (make-array (1+ idx) :initial-element "")))
+        (replace grown row)
+        (setf row grown
+              (zeek-row-strings zeek-log) grown)))
+    (setf (zeek-modified? zeek-log) t
+          (svref row idx) new-value)))
 
 (defun (setf get-value) (new-value zeek-log field &optional fully-parsed?)
   (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
            (ignore fully-parsed?)
            (type zeek zeek-log)
            (type keyword field))
-  (if (has-field? zeek-log field)
-      (prog1 (ecase (zeek-format zeek-log)
-               (:zeek (setf (aref (the simple-vector (zeek-row-strings zeek-log))
-                                  (the fixnum (field->idx zeek-log field)))
-                             new-value))
-               (:json (setf (gethash field (zeek-map zeek-log)) new-value)))
-        (setf (zeek-modified? zeek-log) t))
-      (prog1 (ecase (zeek-format zeek-log)
-               (:zeek (setf (gethash field (zeek-map zeek-log)) new-value))
-               (:json (setf (gethash field (zeek-map zeek-log)) new-value)))
-        (setf (zeek-modified? zeek-log) t))))
+  (cond ((eq :delim (zeek-format zeek-log))
+         (%set-delim-value new-value zeek-log field))
+        ((has-field? zeek-log field)
+         (prog1 (ecase (zeek-format zeek-log)
+                  (:zeek (setf (aref (the simple-vector (zeek-row-strings zeek-log))
+                                     (the fixnum (field->idx zeek-log field)))
+                               new-value))
+                  (:json (setf (gethash field (zeek-map zeek-log)) new-value)))
+           (setf (zeek-modified? zeek-log) t)))
+        (t
+         (prog1 (ecase (zeek-format zeek-log)
+                  (:zeek (setf (gethash field (zeek-map zeek-log)) new-value))
+                  (:json (setf (gethash field (zeek-map zeek-log)) new-value)))
+           (setf (zeek-modified? zeek-log) t)))))
 
 ;; TODO: Make this work with the condition system
 (defun open-zeek-log (&key filepath stream columns)
@@ -122,28 +175,71 @@
     (error "Specify exactly one of FILEPATH or STREAM"))
   (let ((zeek-log (make-zeek :filepath (or filepath "N/A")
                              :stream (or stream (open filepath)))))
-    (setf (zeek-format zeek-log) (infer-format (zeek-stream zeek-log))
+    ;; In delimiter mode we must not INFER-FORMAT: a plain text line may well
+    ;; start with # or {, and the peek would consume nothing but mislead.
+    (setf (zeek-format zeek-log) (if *delimiter* :delim (infer-format (zeek-stream zeek-log)))
           (zeek-accessed-columns zeek-log) columns)
     (ecase (zeek-format zeek-log)
       (:zeek (parse-zeek-header zeek-log))
-      (:json (next-record zeek-log) (infer-log-path-fields-types zeek-log)))
+      (:json (next-record zeek-log) (infer-log-path-fields-types zeek-log))
+      (:delim (init-delim-log zeek-log)))
     ;; Pre-allocate offsets and row-strings vectors now that field count is known.
     (when (zeek-fields zeek-log)
       (setf (zeek-offsets zeek-log)
             (make-array (1+ (length (zeek-fields zeek-log))) :element-type 'fixnum)
             (zeek-row-strings zeek-log)
             (make-array (length (zeek-fields zeek-log)) :initial-element nil)))
-    (when (zeek-accessed-columns zeek-log)
+    ;; INIT-DELIM-LOG has already done the equivalent work; ENSURE-FIELDS->IDX
+    ;; would error here since delimiter mode has neither FIELDS nor a MAP.
+    (when (and (zeek-accessed-columns zeek-log)
+               (not (eq :delim (zeek-format zeek-log))))
       (ensure-fields->idx zeek-log)
       (ecase (zeek-format zeek-log)
         (:zeek (ensure-row-strings zeek-log))
         (:json (ensure-map zeek-log))))
     zeek-log))
 
+(defun init-delim-log (zeek-log)
+  "Prepare ZEEK-LOG for delimiter mode and read its first record. There is no
+header to parse, so instead of deriving FIELD->IDX from #fields we map each
+accessed @N column straight to index N-1 (type :STRING), keeping per-access
+lookup the same O(1) GETHASH the zeek path gets from ENSURE-FIELDS->IDX."
+  (loop for column in (zeek-accessed-columns zeek-log)
+        for idx = (or (delim-column-index column)
+                      (error "delimiter mode (-D) only supports numeric column references like @1; got @~a"
+                             (keyword->string column)))
+        do (setf (gethash column (zeek-field->idx zeek-log)) idx
+                 (gethash column (zeek-field->type zeek-log)) :string))
+  (setf (zeek-row-strings zeek-log) (make-array 0))
+  (next-delim-record zeek-log))
+
+(defun ensure-delim-fields (zeek-log)
+  "Split the current delimiter-mode record into ROW-STRINGS. Unlike the zeek TSV
+path this materializes every field up front rather than lazily slicing out of
+OFFSETS: plain text declares its width nowhere, so rows are allowed to be ragged
+and COMPUTE-OFFSETS' fixed field count would fold a too-wide row's tail into the
+last column."
+  (when (eq :unparsed (zeek-status zeek-log))
+    (setf (zeek-row-strings zeek-log)
+          (coerce (split-sequence *delimiter* (zeek-line zeek-log)) 'simple-vector)
+          (zeek-status zeek-log) :delim-fields)))
+
+(defun next-delim-record (zeek-log)
+  "Advance ZEEK-LOG by one delimiter-mode record. Every line is a record: there
+are no headers, no #close footer, and a leading # is data, not a header."
+  (setf (zeek-line zeek-log) (read-line (zeek-stream zeek-log) nil)
+        (zeek-status zeek-log) :unparsed
+        (zeek-modified? zeek-log) nil)
+  (when (and (zeek-line zeek-log) (zeek-accessed-columns zeek-log))
+    (ensure-delim-fields zeek-log))
+  zeek-log)
+
 (defun next-record (zeek-log)
   ;; TODO: Add condition handling for when the header differs.
   (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
            (type zeek zeek-log))
+  (when (eq :delim (zeek-format zeek-log))
+    (return-from next-record (next-delim-record zeek-log)))
   (let ((line (setf (zeek-line zeek-log) (read-line (zeek-stream zeek-log) nil))))
     (setf (zeek-status zeek-log) :unparsed
           (zeek-modified? zeek-log) nil)
@@ -349,10 +445,27 @@ control string was itself built with FORMAT per record, plus a collected list."
                            stream))
   (terpri stream))
 
+(defun %write-delim-line (zeek-log stream)
+  "Write the current delimiter-mode record. Unmodified rows go out verbatim; a
+modified row is re-joined with *DELIMITER*, PRINCing whatever non-string value a
+mutator may have stored (e.g. (setf @9 (length @3)))."
+  (if (zeek-modified? zeek-log)
+      (let ((row (zeek-row-strings zeek-log)))
+        (loop for i from 0 below (length row)
+              unless (zerop i) do (write-char *delimiter* stream)
+                do (let ((val (svref row i)))
+                     (if (stringp val)
+                         (write-string val stream)
+                         (princ val stream))))
+        (terpri stream))
+      (write-line (zeek-line zeek-log) stream)))
+
 (defun write-zeek-log-line (zeek-log stream format)
   (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
            (type zeek zeek-log)
            (type keyword format))
+  (when (eq :delim format)
+    (return-from write-zeek-log-line (%write-delim-line zeek-log stream)))
   (let ((same-format? (eq format (zeek-format zeek-log))))
     (cond ((and (not (zeek-modified? zeek-log)) same-format?)
            (write-line (zeek-line zeek-log) stream))

@@ -471,3 +471,158 @@ eight")
                             (invoke-restart 'cleek::drop-line))))
       (cat-logs-string test-output :json nil "(= @@r_p 22)" bad-ssh-json)
       (is (= 3 (count-rows test-output))))))
+
+;;; -D/--delimiter-mode: plain delimited text with 1-based @N columns.
+
+(defvar *delim-inputs-dir* (merge-pathnames "delim/" *test-inputs-dir*))
+
+(defun cat-delim (output delimiter mutator-expr filter-expr input)
+  "CAT-LOGS-STRING in delimiter mode. Output format is :INPUT-FORMAT, which
+resolves to :DELIM, since that is the only conversion delimiter mode allows."
+  (let ((cleek::*delimiter* delimiter))
+    (cat-logs-string output :input-format mutator-expr filter-expr input)))
+
+(defun count-lines (path)
+  "Unlike COUNT-ROWS this counts every line: in delimiter mode a leading # is
+data, not a zeek header."
+  (length (uiop:read-file-lines path)))
+
+(defun run-cat-cli (args)
+  "Drive the real CLI option parsing and CAT/HANDLER over ARGS, returning the
+exit code CLINGON:RUN would hand the OS. CLINGON:RUN itself can't be called from
+a test: it ends in CLINGON:EXIT, which would take the test runner down with it.
+*PACKAGE* is rebound because CAT/HANDLER does an IN-PACKAGE."
+  (let ((*package* *package*))
+    (handler-case
+        (progn (cleek::cat/handler (clingon:parse-command-line (cleek::cat/command) args))
+               0)
+      (clingon:exit-error (condition) (clingon:exit-error-code condition)))))
+
+(test delimiter-mode-cat
+  (let ((test-output (merge-pathnames "test.txt" (uiop:temporary-directory))))
+    ;; With no filter or mutator no column is accessed, so records pass through
+    ;; untouched — including the line starting with # in the ragged fixture.
+    (loop for (basename . delimiter) in '(("access.tsv" . #\Tab)
+                                          ("hosts.csv" . #\,)
+                                          ("ragged.psv" . #\|))
+          for input = (merge-pathnames basename *delim-inputs-dir*)
+          do (cat-delim test-output delimiter nil nil input)
+             (is (string= (uiop:read-file-string input)
+                          (uiop:read-file-string test-output)))
+             (uiop:delete-file-if-exists test-output))))
+
+(test delimiter-mode-filters
+  (netaddr:enable-ip-syntax)
+  (enable-interpol-syntax)
+  (let ((test-output (merge-pathnames "test.txt" (uiop:temporary-directory)))
+        (access (merge-pathnames "access.tsv" *delim-inputs-dir*)))
+    (cat-delim test-output #\Tab nil "(string= @5 \"GET\")" access)
+    (is (= 3 (count-lines test-output)))
+
+    ;; @@N is @N in delimiter mode: same result, and no line is dropped for
+    ;; want of a parsed value.
+    (cat-delim test-output #\Tab nil "(string= @@5 \"GET\")" access)
+    (is (= 3 (count-lines test-output)))
+    (cat-delim test-output #\Tab nil "@@5" access)
+    (is (= 5 (count-lines test-output)))
+
+    ;; Types are the user's problem here, so helpers wanting real values need an
+    ;; explicit coercion.
+    (cat-delim test-output #\Tab nil "(private? (netaddr:make-ip-address @3))" access)
+    (is (= 3 (count-lines test-output)))
+    (cat-delim test-output #\Tab nil "(> (parse-integer @4) 1024)" access)
+    (is (= 1 (count-lines test-output)))
+
+    ;; LINE and the string helpers work unchanged.
+    (cat-delim test-output #\Tab nil "(~ \"8\\\\.8\\\\.8\\\\.8\" LINE)" access)
+    (is (= 1 (count-lines test-output)))
+    (cat-delim test-output #\Tab nil "(c? #(\"/about\" \"/login\") @6)" access)
+    (is (= 2 (count-lines test-output)))
+    (uiop:delete-file-if-exists test-output)))
+
+(test delimiter-mode-mutators
+  (let ((test-output (merge-pathnames "test.txt" (uiop:temporary-directory)))
+        (hosts (merge-pathnames "hosts.csv" *delim-inputs-dir*)))
+    ;; Overwrite an existing column.
+    (cat-delim test-output #\, "(setf @1 (e2ld @1))" nil hosts)
+    (is (equal '("google.com,1,a" "dropbox.com,2,b" "slack.com,3,c")
+               (uiop:read-file-lines test-output)))
+
+    ;; The ! setter sugar too.
+    (cat-delim test-output #\, "(e2ld! @1)" nil hosts)
+    (is (equal '("google.com,1,a" "dropbox.com,2,b" "slack.com,3,c")
+               (uiop:read-file-lines test-output)))
+
+    ;; Append a column just past the row width.
+    (cat-delim test-output #\, "(setf @4 (tld @1))" nil hosts)
+    (is (equal '("foo.bar.google.com,1,a,com" "www.dropbox.com,2,b,com" "edgeapi.slack.com,3,c,com")
+               (uiop:read-file-lines test-output)))
+
+    ;; Append past the width with a gap, and with a non-string value.
+    (cat-delim test-output #\, "(setf @6 (length @1))" nil hosts)
+    (is (equal '("foo.bar.google.com,1,a,,,18" "www.dropbox.com,2,b,,,15" "edgeapi.slack.com,3,c,,,17")
+               (uiop:read-file-lines test-output)))
+    (uiop:delete-file-if-exists test-output)))
+
+(test delimiter-mode-ragged
+  (let ((test-output (merge-pathnames "test.txt" (uiop:temporary-directory)))
+        (ragged (merge-pathnames "ragged.psv" *delim-inputs-dir*)))
+    ;; Rows narrower than the referenced column read as "" rather than erroring
+    ;; (or, worse, as NIL, which STRING= would treat as the string "NIL").
+    (cat-delim test-output #\| nil "(string= @4 \"\")" ragged)
+    (is (equal '("#not-a-header|2|8.8.8.8" "b|3") (uiop:read-file-lines test-output)))
+
+    ;; A row wider than its neighbours keeps every field.
+    (cat-delim test-output #\| nil "(string= @5 \"z\")" ragged)
+    (is (equal '("c|4|192.168.0.1|y|z") (uiop:read-file-lines test-output)))
+
+    ;; Rewriting a row preserves its own width, not some global one.
+    (cat-delim test-output #\| "(setf @2 \"MUT\")" nil ragged)
+    (is (equal '("a|MUT|10.0.0.1|x" "#not-a-header|MUT|8.8.8.8" "b|MUT" "c|MUT|192.168.0.1|y|z")
+               (uiop:read-file-lines test-output)))
+    (uiop:delete-file-if-exists test-output)))
+
+(test delimiter-mode-usage-errors
+  (let ((test-output (merge-pathnames "test.txt" (uiop:temporary-directory)))
+        (access (merge-pathnames "access.tsv" *delim-inputs-dir*)))
+    (is (eql #\, (cleek::parse-delimiter ",")))
+    (is (eql #\| (cleek::parse-delimiter "|")))
+    (is (eql #\Tab (cleek::parse-delimiter "\\t")))
+    (is (eql #\Space (cleek::parse-delimiter "\\s")))
+    (is (null (cleek::parse-delimiter nil)))
+    (is (eq :rejected (handler-case (cleek::parse-delimiter "abc") (error () :rejected))))
+
+    ;; Plain text has no field names, so a named column cannot mean anything.
+    (is (eq :rejected (handler-case (cat-delim test-output #\Tab nil "(string= @query \"x\")" access)
+                        (error () :rejected))))
+
+    ;; -f zeek/-f json are rejected up front, with an EX_USAGE exit code so a
+    ;; shell pipeline notices rather than seeing an empty output file.
+    (uiop:delete-file-if-exists test-output)
+    (let* (code
+           (stderr (with-output-to-string (*error-output*)
+                     (setf code (run-cat-cli (list "-D" "," "-f" "json" "-o" (namestring test-output)
+                                                   (namestring access)))))))
+      (is (= 64 code))
+      (is (str:contains? "not supported with -D" stderr))
+      (is (not (probe-file test-output))))
+
+    ;; A bad delimiter is reported the same way rather than reaching the debugger.
+    (let* (code
+           (stderr (with-output-to-string (*error-output*)
+                     (setf code (run-cat-cli (list "-D" "abc" (namestring access)))))))
+      (is (= 64 code))
+      (is (str:contains? "single character" stderr)))
+
+    ;; A well-formed invocation goes all the way through the CLI, which also
+    ;; covers -D's own \t escape. STDERR is only checked for the absence of a
+    ;; complaint, since SBCL's compiler notes land there too.
+    (let* (code
+           (stderr (with-output-to-string (*error-output*)
+                     (setf code (run-cat-cli (list "-D" "\\t" "-x" "(string= @5 \"POST\")"
+                                                   "-o" (namestring test-output)
+                                                   (namestring access)))))))
+      (is (= 0 code))
+      (is (not (str:contains? "-D/--delimiter-mode" stderr)))
+      (is (= 2 (count-lines test-output))))
+    (uiop:delete-file-if-exists test-output)))
