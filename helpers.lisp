@@ -58,6 +58,8 @@
 (defalias ts= #'local-time:timestamp= "Alias for LOCAL-TIME:TIMESTAMP=")
 (defalias ts/= #'local-time:timestamp/= "Alias for LOCAL-TIME:TIMESTAMP/=")
 
+;; TODO: make ANNO take FIELD (or FIELDS). default field for all IPs? hmm that only makes sense if you already construct
+;; the SETF sets.
 (defmacro anno (field &rest containers-and-labels)
   "Given a column in FIELD and an even number of pair-wise containers/labels, return the label for which container contains FIELD. A default container can be specified with T. Use with SETF to create a new column based on this label, for example: (setf @orig_label (anno @o_h #.#I\"192.168.0.0/16\" \"192.168\" \".127.52.\" \"string-contains\" \'(\"fe80::1462:3ff9:fd68:b0fc\") \"list-contains\" t \"unknown\")) creates the column ORIG_LABEL based on IP checks, a string check, a list membership check, and a default case."
   `(cond ,@(loop for (container label) on containers-and-labels by #'cddr

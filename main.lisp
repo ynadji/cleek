@@ -55,9 +55,15 @@
             (format t "~%# mutators~%~s~%" mutators)
             (format t "~%# filters~%~s~%" filters)
             (return-from cat-logs-string))
+          ;; Plain text has no field names, so every column must be an @N.
+          (when *delimiter*
+            (ax:when-let ((bad (remove-if #'delim-column-index columns)))
+              (error "delimiter mode (-D) only supports numeric column references like @1; got ~{@~a~^, ~}"
+                     (mapcar #'keyword->string bad))))
           ;; Byte-mode engine (zeek TSV → zeek TSV only); NIL means it
           ;; declined and we fall through to the normal engine.
           (when (and *byte-mode*
+                     (null *delimiter*)
                      (cat-logs-bytes output-file output-format
                                      ensure-truthy-parse-func mutator-func filter-func
                                      columns filters mutators
@@ -121,7 +127,12 @@
   (and (symbolp symbol) (char= #\@ (char (symbol-name symbol) 0))))
 
 (defun fully-parsed-column? (symbol)
-  (and (column? symbol) (char= #\@ (char (symbol-name symbol) 1))))
+  ;; Delimiter mode has no #types, so there is nothing to fully parse: @@N is
+  ;; just @N. Reporting NIL here also keeps FULL-COLUMNS empty, which leaves
+  ;; ENSURE-FULLY-PARSED-NON-NIL-FUNC a no-op so @@N never drops a line.
+  (and (null *delimiter*)
+       (column? symbol)
+       (char= #\@ (char (symbol-name symbol) 1))))
 
 (defun column->keyword (symbol)
   (when (column? symbol)
@@ -292,7 +303,24 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
                              :short-name #\B
                              :long-name "byte-mode"
                              :initial-value nil
-                             :key :byte-mode)))
+                             :key :byte-mode)
+        (clingon:make-option :string
+                             :description "Read plain delimited text split on DELIM (a character, or \\t \\r \\s \\0) with 1-based @N columns instead of zeek TSV/JSON"
+                             :short-name #\D
+                             :long-name "delimiter-mode"
+                             :initial-value nil
+                             :key :delimiter-mode)))
+
+(defun report-usage-error (control &rest args)
+  "Report a command-line usage mistake on *ERROR-OUTPUT* and stop the run.
+CLINGON:EXIT-ERROR is signalled rather than simply returning so that, e.g.,
+`cleek -D , -f json foo.csv > out' fails the shell pipeline instead of quietly
+writing nothing: CLINGON:RUN turns it into (uiop:quit 64), the EX_USAGE of
+sysexits.h. Callers must stay outside the HANDLER-BIND in CAT/HANDLER, which
+would otherwise drop this into the debugger."
+  (apply #'format *error-output* control args)
+  (terpri *error-output*)
+  (error 'clingon:exit-error :code 64))
 
 (defun cat/handler (cmd)
   (in-package :cleek)
@@ -305,7 +333,12 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
         (mutator-expr (clingon:getopt cmd :mutator-expr))
         (*debug-compiled-functions* (clingon:getopt cmd :debug-compiled-functions))
         (*byte-mode* (clingon:getopt cmd :byte-mode))
+        (*delimiter* (handler-case (parse-delimiter (clingon:getopt cmd :delimiter-mode))
+                       (error (condition) (report-usage-error "~a" condition))))
         (non-interactive-mode? (clingon:getopt cmd :non-interactive-mode)))
+    (when (and *delimiter* (member format '(:zeek :json)))
+      (report-usage-error "-f ~a is not supported with -D/--delimiter-mode: plain delimited text has no field names or types to emit."
+                          (keyword->string format)))
     (init-common-filters-and-mutators)
     (handler-bind ((error (lambda (condition) (if non-interactive-mode?
                                              (if (find-restart 'drop-line condition)
@@ -331,7 +364,7 @@ Primarily used anonymize IPs and hash fields with ANONIP and HASH."
 (defun cat/command ()
   (clingon:make-command
    :name "cleek"
-   :version "0.18.0"
+   :version "0.19.0"
    :usage "[ZEEK-LOG]..."
    :description "Concatenate, filter, and convert Zeek logs"
    :handler #'cat/handler
