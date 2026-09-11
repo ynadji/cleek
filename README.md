@@ -4,7 +4,9 @@
 DSL for filtering and mutating Zeek logs in either TSV or JSON formats, and
 allows converting between the two. It's primary use-case is quick'n'dirty
 processing or data analysis of Zeek logs where you may not have the logs already
-stored in a database or SIEM for easier access.
+stored in a database or SIEM for easier access. The same DSL can be pointed at
+plain delimited text — CSVs, `zeek-cut` output, ad-hoc TSVs — with
+[delimiter mode](#delimiter-mode).
 
 ## Usage
 
@@ -19,10 +21,15 @@ USAGE:
 OPTIONS:
       --help                      display usage information and exit
       --version                   display version and exit
+  -B, --byte-mode                 Byte-mode engine (experimental; zeek TSV in/out only, falls back
+                                  otherwise)
+  -D, --delimiter-mode <VALUE>    Read plain delimited text split on DELIM (a character, or \t \r \s \0)
+                                  with 1-based @N columns instead of zeek TSV/JSON
   -d, --debug-compiled-functions  Debug compiled functions
   -f, --output-format <CHOICE>    Output format [default: input-format] [choices: zeek, json,
                                   input-format]
   -m, --mutator <VALUE>           Mutator expression
+  -n, --non-interactive-mode      Non-interactive mode (drop all lines with errors)
   -o, --output-file <VALUE>       Output file [default: /dev/stdout]
   -x, --filter <VALUE>            Filter expression
 ```
@@ -69,8 +76,8 @@ evaluated against each line of a Zeek log. If it returns a "truthy" value, the
 line is printed, otherwise it is suppressed. A mutator is an implicit PROGN of
 Lisp forms that add or modify columns. Mutators are run before filters. Both
 require references to columns from the data to be meaningful, which are denoted
-by `@colname` or `@@colname`, or references to the whole line represented by the
-special symbol `LINE`.
+by `@colname` or `@@colname` (`@N` in [delimiter mode](#delimiter-mode)), or
+references to the whole line represented by the special symbol `LINE`.
 
 ### Filters
 
@@ -245,6 +252,75 @@ d.dropbox.com	com
 ```
 
 See [tests.lisp](./tests.lisp) for more usage examples.
+
+### Delimiter Mode
+
+Plenty of useful data sitting next to Zeek logs isn't a Zeek log: `zeek-cut`
+output, CSVs, pipe-delimited exports, ad-hoc TSVs. `-D`/`--delimiter-mode` points
+the same DSL and the same helpers at those files. The argument to `-D` is the
+delimiter itself, either a literal character or one of the escapes `\t`, `\r`,
+`\s`, and `\0`. Since a plain file has no `#fields` header, columns are
+referenced by position with `@N`, where `@1` is the first column:
+
+```
+~/code/cleek topic/yacin/tsv-mode*
+¡ cat data/test-input/delim/access.tsv
+1	2026-01-02	10.0.0.1	443	GET	/index.html
+2	2026-01-02	8.8.8.8	53	POST	/api/v1
+3	2026-01-03	192.168.1.5	80	GET	/about
+4	2026-01-03	1.1.1.1	22	GET	/index.html
+5	2026-01-04	172.16.0.9	8080	POST	/login
+
+~/code/cleek topic/yacin/tsv-mode*
+¡ cleek -D '\t' -x '(and (string= @5 "GET") (private? (na:make-ip-address @3)))' data/test-input/delim/access.tsv
+1	2026-01-02	10.0.0.1	443	GET	/index.html
+3	2026-01-03	192.168.1.5	80	GET	/about
+```
+
+There is no `#types` line either, so every column is a string and `@@N` is
+merely a synonym for `@N`. Helpers that want a real value need an explicit
+coercion — `(na:make-ip-address @3)` above, or `parse-integer` for a port:
+
+```
+~/code/cleek topic/yacin/tsv-mode*
+¡ cleek -D '\t' -x '(> (parse-integer @4) 1024)' data/test-input/delim/access.tsv
+5	2026-01-04	172.16.0.9	8080	POST	/login
+```
+
+Mutators work as usual, including the `!` suffix, and assigning past the end of a
+row appends a column:
+
+```
+~/code/cleek topic/yacin/tsv-mode*
+¡ cleek -D , -m '(setf @4 (e2ld @1)) (hash! @3)' data/test-input/delim/hosts.csv
+foo.bar.google.com,1,ca7f063db72b93df387c094e16972c23fac24befdcbfd96ace1c1ecba6575995,google.com
+www.dropbox.com,2,9934c2b9ae166a15da9442826c9f61bc01a202325e8e9cc0c14eef720ea401ed,dropbox.com
+edgeapi.slack.com,3,86add1812331cc6dd75d2e69416340daa6e9a8c2a8710d535b2167a2666c8e47,slack.com
+```
+
+Rows are allowed to be ragged: nothing declares how many columns a plain file
+has, so an `@N` past the end of a row reads as the empty string rather than
+failing, and each row keeps its own width on output. A leading `#` is data, not a
+header:
+
+```
+~/code/cleek topic/yacin/tsv-mode*
+¡ cat data/test-input/delim/ragged.psv
+a|1|10.0.0.1|x
+#not-a-header|2|8.8.8.8
+b|3
+c|4|192.168.0.1|y|z
+
+~/code/cleek topic/yacin/tsv-mode*
+¡ cleek -D '|' -x '(string= @4 "")' data/test-input/delim/ragged.psv
+#not-a-header|2|8.8.8.8
+b|3
+```
+
+Two other things follow from having no field names or types: output is always
+the same delimited text (`-f zeek` and `-f json` are rejected with an `EX_USAGE`
+exit code), and `LINE` still refers to the whole raw line, so
+`(~ "8\\.8\\.8\\.8" LINE)` works exactly as it does on a Zeek log.
 
 ### Helpers
 
