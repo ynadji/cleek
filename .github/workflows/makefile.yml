@@ -17,38 +17,49 @@ jobs:
 
     env:
       LISP: sbcl-bin
+      # Absolute, and recursive thanks to the trailing //, so ASDF finds
+      # cleek.asd at the workspace root and every deps/*/ checkout below it.
+      #
+      # This replaces a `sudo mkdir ~/common-lisp` + `sudo mv common-lisp /root/`
+      # dance that left ASDF scanning one directory while the checkouts sat in
+      # another. When that scan comes up empty quicklisp substitutes its own
+      # dist releases of netaddr, cl-dns and cl-tld without saying so, and the
+      # build silently used a netaddr eight months stale. ci.lisp's
+      # CHECK-PINNED-DEPS now fails the job if that happens again.
+      CL_SOURCE_REGISTRY: "${{ github.workspace }}//"
 
     steps:
-    - name: Foo
-      run: sudo mkdir ~/common-lisp
     - uses: actions/checkout@v4
+    # REF is each repository's default branch: tracking a branch rather than a
+    # tag or SHA means an unrelated push to a dependency can still change what
+    # this job builds.
     - uses: actions/checkout@v4
       with:
         repository: ynadji/netaddr
-        path: common-lisp/netaddr
+        ref: main
+        path: deps/netaddr
     - uses: actions/checkout@v4
       with:
         repository: ynadji/cl-dns
-        path: common-lisp/cl-dns
+        ref: main
+        path: deps/cl-dns
     - uses: actions/checkout@v4
       with:
         repository: lu4nx/cl-tld
-        path: common-lisp/cl-tld
+        ref: master
+        path: deps/cl-tld
     - uses: 40ants/setup-lisp@v4
 
     - name: Install dependencies
       run: |
         ros run -- --version
-        sudo mv common-lisp /root/
-        sudo ls -al /root/common-lisp
-        sudo ln -s $(pwd) /root/common-lisp/
-        sudo make deps
+        make deps
 
     - name: Test CLEEK
-      run: sudo make test
+      run: make test
 
     - name: Build CLEEK
-      run: sudo make build
+      run: make build
 
     - uses: actions/upload-artifact@v4
       with:
