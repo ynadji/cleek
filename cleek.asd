@@ -26,6 +26,13 @@
   :license "MIT"
   :depends-on ("cleek" "fiveam" "str")
   :components ((:file "tests"))
-  :perform (test-op (o c) (loop for suite in '(#:tests #:types #:end-to-end)
-                                do (symbol-call :fiveam '#:run!
-                                                (uiop:find-symbol* suite '#:cleek/tests)))))
+  ;; FIVEAM:RUN! returns NIL when a suite had failures, and prints them. Ignoring
+  ;; that return value made `make test` exit 0 on a red suite, so collect the
+  ;; failures and signal: callers (and ci.lisp) can then see a test run fail.
+  :perform (test-op (o c)
+                    (let ((failed (loop for suite in '(#:tests #:types #:end-to-end)
+                                        unless (symbol-call :fiveam '#:run!
+                                                            (uiop:find-symbol* suite '#:cleek/tests))
+                                          collect suite)))
+                      (when failed
+                        (error "fiveam suite~p failed: ~{~(~a~)~^, ~}" (length failed) failed)))))
