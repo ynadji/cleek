@@ -337,13 +337,15 @@ so that a filter drops the line."
 
 (defun jsonify-zeek-map (zeek-map)
   (loop for field being the hash-key of zeek-map
-        do (multiple-value-bind (type found) (gethash field *field->type*)
-             (when found
-               ;; Zeek format uses "-" to indicate unset while JSON simply has the key not present in the output. We use
-               ;; CL:NULL in Zeek formatted logs to differentiate this from the string "-", so we remove these from the
-               ;; map when JSONifying a :ZEEK-MAP typed ZEEK-MAP.
-               (if (eq 'cl:null (gethash field zeek-map))
-                   (remhash field zeek-map)
+        ;; Zeek format uses "-" to indicate unset while JSON simply has the key not present in the output. We use
+        ;; CL:NULL in Zeek formatted logs to differentiate this from the string "-", so we remove these from the
+        ;; map when JSONifying a :ZEEK-MAP typed ZEEK-MAP. This is independent of *FIELD->TYPE*: a field we have no
+        ;; type for is still unset, and writing it as "field":null spends bytes to say what an absent key already
+        ;; says. NB: an *empty* field is not unset -- it stays as "" or [].
+        do (if (eq 'cl:null (gethash field zeek-map))
+               (remhash field zeek-map)
+               (multiple-value-bind (type found) (gethash field *field->type*)
+                 (when found
                    (setf (gethash field zeek-map) (jsonify-zeek-type (gethash field zeek-map) type))))))
   zeek-map)
 

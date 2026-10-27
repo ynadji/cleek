@@ -576,6 +576,46 @@ eight")
                             (uiop:read-file-lines test-output))))
       (uiop:delete-file-if-exists test-output))))
 
+(defparameter *unset-field-log*
+  (tsv-log-string
+   ;; SERVICE has a *FIELD->TYPE* entry; ROOM_NAME, NOTE and LABELS do not. Each
+   ;; is unset in one row and set in the other.
+   '("#separator \\x09"
+     ("#set_separator" ",")
+     ("#empty_field" "(empty)")
+     ("#unset_field" "-")
+     ("#path" "mylog")
+     ("#fields" "ts" "id.orig_h" "service" "room_name" "note" "labels")
+     ("#types" "time" "addr" "string" "string" "string" "set[string]")
+     ("1623187691.095184" "64.189.88.51" "-" "-" "hi" "-")
+     ("1623187692.095184" "192.168.1.145" "dns" "lobby" "-" "(empty)"))))
+
+(test unset-fields-omitted-from-json
+  (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory))))
+    (with-tmp-file (log *unset-field-log*)
+      ;; A missing JSON key is already implicitly null, so an unset Zeek field
+      ;; is dropped rather than written as "room_name":null. An *empty* field is
+      ;; not unset: it stays as [].
+      (cat-logs-string test-output :json nil nil log)
+      (is (equal '("{\"ts\":1.623187691095184e9,\"id.orig_h\":\"64.189.88.51\",\"note\":\"hi\"}"
+                   "{\"ts\":1.623187692095184e9,\"id.orig_h\":\"192.168.1.145\",\"service\":\"dns\",\"room_name\":\"lobby\",\"labels\":[]}")
+                 (uiop:read-file-lines test-output)))
+      (uiop:delete-file-if-exists test-output)
+
+      ;; Mutating a record takes a different write path, which must agree.
+      (cat-logs-string test-output :json "(setf @seen t)" nil log)
+      (is (every (lambda (line) (not (str:contains? "null" line)))
+                 (uiop:read-file-lines test-output)))
+      (uiop:delete-file-if-exists test-output)
+
+      ;; Zeek TSV still distinguishes unset from empty, so round trips survive.
+      (cat-logs-string test-output :zeek nil nil log)
+      (is (equal '("1623187691.095184	64.189.88.51	-	-	hi	-"
+                   "1623187692.095184	192.168.1.145	dns	lobby	-	(empty)")
+                 (remove-if (lambda (line) (str:starts-with? "#" line))
+                            (uiop:read-file-lines test-output))))
+      (uiop:delete-file-if-exists test-output))))
+
 ;;; -D/--delimiter-mode: plain delimited text with 1-based @N columns.
 
 (defvar *delim-inputs-dir* (merge-pathnames "delim/" *test-inputs-dir*))
