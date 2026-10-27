@@ -114,14 +114,29 @@ every key of every record when parsing JSON logs."
     (local-time:unix-to-timestamp secs :nsec (* (expt 10 6) (truncate nsecs)))))
 
 ;; type conversions between zeek, JSON, and lisp.
-;; Hash table for O(1) type→parser dispatch (replaces alist *zeek-primitive-type-parsers*).
-;; Includes both primitive types and compound types (set[...], vector[...]).
-;; Compound types are lazily cached on first access.
-(defparameter *zeek-type-parsers* (make-hash-table :test 'eq))
+(defparameter *lazily-parsed-zeek-types* '(:addr :subnet)
+  "Types left as the string the log carried unless a filter or mutator promotes
+them with @@. Zeek TSV and JSON both write ADDR and SUBNET as strings, so
+building a NETADDR object for every record is wasted allocation, and it leaks a
+nested record -- {\"version\":4,\"str\":\"1.2.3.4\",\"int\":16909060} -- into
+JSON output for any field whose type is not in *FIELD->TYPE*.")
+
+;; Hash tables for O(1) type→parser dispatch (replaces alist *zeek-primitive-type-parsers*).
+;; Both include primitive types and compound types (set[...], vector[...]).
+;; Compound types are lazily cached on first access, in whichever table was consulted.
+(defparameter *zeek-type-parsers* (make-hash-table :test 'eq)
+  "TYPE → parser for a record's map, where *LAZILY-PARSED-ZEEK-TYPES* pass
+through as strings.")
+
+(defparameter *zeek-full-type-parsers* (make-hash-table :test 'eq)
+  "TYPE → parser for @@, which parses every type, *LAZILY-PARSED-ZEEK-TYPES*
+included. Otherwise identical to *ZEEK-TYPE-PARSERS*.")
 
 (defun %init-zeek-type-parsers ()
-  "Populate *zeek-type-parsers* with primitive type parsers."
+  "Populate both parser tables with primitive type parsers. They differ only in
+*LAZILY-PARSED-ZEEK-TYPES*."
   (clrhash *zeek-type-parsers*)
+  (clrhash *zeek-full-type-parsers*)
   (loop for (type . parser) in
         `((:bool . ,(lambda (x) (if (string= "T" x) t nil)))
           (:count . ,#'parse-integer)
@@ -134,7 +149,9 @@ every key of every record when parsing JSON logs."
           (:addr . ,#'na:make-ip-address)
           (:subnet . ,#'na:make-ip-network)
           (:enum . ,#'identity))
-        do (setf (gethash type *zeek-type-parsers*) parser)))
+        do (setf (gethash type *zeek-full-type-parsers*) parser
+                 (gethash type *zeek-type-parsers*)
+                 (if (member type *lazily-parsed-zeek-types*) #'identity parser))))
 
 (%init-zeek-type-parsers)
 
@@ -145,13 +162,13 @@ NIL for anything else."
       ("(set|vector)\\[(.*?)\\]" (keyword->string type))
     (string->keyword primitive-type-str)))
 
-(defun %get-compound-parser (type)
+(defun %get-compound-parser (type table)
   "For compound types like :SET[ADDR] or :VECTOR[COUNT], look up the element
-type's parser and return a closure that splits on separator and maps it.
-Caches the result in *zeek-type-parsers*."
+type's parser in TABLE and return a closure that splits on separator and maps
+it. Caches the result in TABLE."
   (ax:when-let* ((element-type (%compound-element-type type))
-                 (element-parser (gethash element-type *zeek-type-parsers*)))
-    (setf (gethash type *zeek-type-parsers*)
+                 (element-parser (gethash element-type table)))
+    (setf (gethash type table)
           (lambda (field)
             (map 'vector element-parser
                  (split-sequence *zeek-set-separator* field))))))
@@ -191,6 +208,11 @@ fallthrough re-did keyword->string + regex matching every time."
      (:subnet . ,(lambda (x) (str:downcase (na:str x)))))))
 
 (defparameter *json-zeekify*
+  (%make-type-hash-table
+   `((:bool . ,(lambda (x) (string= x "T")))
+     (:time . ,#'double-to-timestamp))))
+
+(defparameter *json-full-zeekify*
   (%make-type-hash-table
    `((:bool . ,(lambda (x) (string= x "T")))
      (:time . ,#'double-to-timestamp)
@@ -271,18 +293,24 @@ fallthrough re-did keyword->string + regex matching every time."
 ;; ordering of filters/mutators matters now. currently, filtering happens after mutation (so you can filter based on a
 ;; newly created field) but what if we need to filter fields that are going to be fully parsed and used as part of a
 ;; mutator? hmm. multiple rounds? interleaving sounds annoying though.
-(defun parse-zeek-type (field type &optional unset-is-nil?)
+(defun parse-zeek-type (field type &optional fully-parsed?)
+  "Parse FIELD, a raw field of Zeek TYPE, to its lisp value.
+
+FULLY-PARSED? is the @@ path: *LAZILY-PARSED-ZEEK-TYPES* are parsed instead of
+passed through as strings, and an unset field reads as NIL rather than CL::NULL
+so that a filter drops the line."
   (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
            (type string field)
            (type keyword type))
   ;; unset should probably be 'null and empty should probably be #() (since '() is eq to nil)
   ;; NB: *zeek-unset-field* is a character; (string #\-) here would allocate on every call.
   (cond ((and (= 1 (length field)) (char= *zeek-unset-field* (char field 0)))
-         (if unset-is-nil? nil 'cl::null))
+         (if fully-parsed? nil 'cl::null))
         ((string= field *zeek-empty-field*)
          (if (eq type :string) "" #()))
-        (t (let ((parser (or (gethash type *zeek-type-parsers*)
-                             (%get-compound-parser type))))
+        (t (let* ((table (if fully-parsed? *zeek-full-type-parsers* *zeek-type-parsers*))
+                  (parser (or (gethash type table)
+                              (%get-compound-parser type table))))
              (if parser
                  (funcall parser field)
                  (error "Unknown Zeek type: ~a" type))))))
@@ -319,10 +347,14 @@ fallthrough re-did keyword->string + regex matching every time."
                    (setf (gethash field zeek-map) (jsonify-zeek-type (gethash field zeek-map) type))))))
   zeek-map)
 
-(defun zeekify-json-type (field type)
-  (funcall (%type-handler *json-zeekify* type
+(defun zeekify-json-type (field type &optional fully-parsed?)
+  "Convert FIELD, a value jzon read out of a JSON log, to its Zeek lisp value.
+FULLY-PARSED? is the @@ path, which also promotes *LAZILY-PARSED-ZEEK-TYPES*.
+The compound handler each table caches closes over the FULLY-PARSED? that
+selected that table, so the two stay in step."
+  (funcall (%type-handler (if fully-parsed? *json-full-zeekify* *json-zeekify*) type
                           (lambda (element-type)
-                            (lambda (f) (map 'vector (lambda (x) (zeekify-json-type x element-type)) f)))
+                            (lambda (f) (map 'vector (lambda (x) (zeekify-json-type x element-type fully-parsed?)) f)))
                           #'identity)
            field))
 
