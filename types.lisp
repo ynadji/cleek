@@ -9,8 +9,9 @@
   line
   types
   fields
+  offsets
   row-strings
-  row
+  bline ; byte-mode only: the record as a ub8 vector (see bio.lisp)
   (field->idx (make-hash-table) :type hash-table)
   (field->type (make-hash-table) :type hash-table)
   (status :unparsed :type keyword) ; :unparsed :bytes :? :string-map :parsed-map
@@ -28,11 +29,65 @@
 (na:enable-ip-syntax)
 (cl-interpol:enable-interpol-syntax)
 
+(declaim (ftype (function (simple-string &key (:start fixnum) (:end fixnum)) double-float) fast-parse-double))
+(defun fast-parse-double (string &key (start 0) (end (length string)))
+  "Parse STRING within [START, END) to double-float. Handles [-]digits[.digits][e|E[-|+]digits].
+Avoids the full CL reader overhead of READ-FROM-STRING by doing direct
+character-level parsing with rational arithmetic for exact rounding."
+  (declare (optimize (speed 3) (safety 0))
+           (type simple-string string)
+           (type fixnum start end))
+  (let ((pos start)
+        (neg nil)
+        (significand 0)
+        (n-frac 0)
+        (exp-part 0)
+        (exp-neg nil))
+    (declare (fixnum pos n-frac exp-part))
+    ;; Sign
+    (when (and (< pos end) (char= (schar string pos) #\-))
+      (setf neg t)
+      (incf pos))
+    ;; Integer part
+    (loop while (and (< pos end) (digit-char-p (schar string pos)))
+          do (setf significand (+ (* significand 10) (- (char-code (schar string pos)) 48)))
+             (incf pos))
+    ;; Fractional part — keep accumulating into significand, count digits
+    (when (and (< pos end) (char= (schar string pos) #\.))
+      (incf pos)
+      (loop while (and (< pos end) (digit-char-p (schar string pos)))
+            do (setf significand (+ (* significand 10) (- (char-code (schar string pos)) 48)))
+               (incf n-frac)
+               (incf pos)))
+    ;; Exponent
+    (when (and (< pos end) (or (char= (schar string pos) #\e) (char= (schar string pos) #\E)))
+      (incf pos)
+      (when (and (< pos end) (or (char= (schar string pos) #\-) (char= (schar string pos) #\+)))
+        (when (char= (schar string pos) #\-)
+          (setf exp-neg t))
+        (incf pos))
+      (loop while (and (< pos end) (digit-char-p (schar string pos)))
+            do (setf exp-part (+ (* exp-part 10) (- (char-code (schar string pos)) 48)))
+               (incf pos)))
+    ;; Combine using rational arithmetic: significand * 10^(exp - n-frac)
+    ;; This ensures exact rounding identical to READ-FROM-STRING.
+    (let* ((effective-exp (- (if exp-neg (- exp-part) exp-part) n-frac))
+           (rational-val (if (>= effective-exp 0)
+                             (* significand (expt 10 effective-exp))
+                             (/ significand (expt 10 (- effective-exp)))))
+           (result (coerce rational-val 'double-float)))
+      (if neg (- result) result))))
+
 (defvar *zeek-set-separator* #\,)
 (defvar *zeek-unset-field* #\-)
 (defvar *zeek-empty-field* "(empty)")
 
-(defun string->keyword (s) (ax:make-keyword (str:upcase s)))
+(defvar *string->keyword-cache* (make-hash-table :test 'equal))
+(defun string->keyword (s)
+  "Memoized: upcasing + interning per call is expensive and this is called for
+every key of every record when parsing JSON logs."
+  (or (gethash s *string->keyword-cache*)
+      (setf (gethash s *string->keyword-cache*) (ax:make-keyword (str:upcase s)))))
 (defun keyword->string (k) (str:downcase (string k)))
 
 (defvar *zeek-open-close-time-format* '(:year "-" (:month 2) "-" (:day 2) "-" (:hour12 2) "-" (:min 2) "-" (:sec 2))
@@ -49,27 +104,69 @@
      (coerce (/ (local-time:nsec-of ts) (expt 10 6)) 'double-float)))
 
 (defun zeek-ts-string-to-timestamp (s)
-  (destructuring-bind (secs nsecs) (mapcar #'parse-integer (split-sequence #\. s))
-    (local-time:unix-to-timestamp secs :nsec nsecs)))
+  (let ((dot (position #\. s)))
+    (local-time:unix-to-timestamp
+     (parse-integer s :end dot)
+     :nsec (if dot (parse-integer s :start (1+ dot)) 0))))
 
 (defun double-to-timestamp (x)
   (multiple-value-bind (secs nsecs) (truncate x)
     (local-time:unix-to-timestamp secs :nsec (* (expt 10 6) (truncate nsecs)))))
 
 ;; type conversions between zeek, JSON, and lisp.
-(defparameter *zeek-primitive-type-parsers*
-  `((:bool . ,(lambda (x) (if (string= "T" x) t nil)))
-    (:count . ,#'parse-integer)
-    (:int . ,#'parse-integer)
-    (:double . ,#'read-from-string)
-    (:time . ,#'zeek-ts-string-to-timestamp)
-    (:interval . ,#'read-from-string)
-    (:string . ,#'identity)             ; or #'string maybe?
-    (:port . ,#'parse-integer)
-    (:addr . ,#'na:make-ip-address)
-    (:subnet . ,#'na:make-ip-network)
-    (:enum . ,#'identity)               ; just keep it as a string i suppose
-    ))
+;; Hash table for O(1) type→parser dispatch (replaces alist *zeek-primitive-type-parsers*).
+;; Includes both primitive types and compound types (set[...], vector[...]).
+;; Compound types are lazily cached on first access.
+(defparameter *zeek-type-parsers* (make-hash-table :test 'eq))
+
+(defun %init-zeek-type-parsers ()
+  "Populate *zeek-type-parsers* with primitive type parsers."
+  (clrhash *zeek-type-parsers*)
+  (loop for (type . parser) in
+        `((:bool . ,(lambda (x) (if (string= "T" x) t nil)))
+          (:count . ,#'parse-integer)
+          (:int . ,#'parse-integer)
+          (:double . ,#'fast-parse-double)
+          (:time . ,#'zeek-ts-string-to-timestamp)
+          (:interval . ,#'fast-parse-double)
+          (:string . ,#'identity)
+          (:port . ,#'parse-integer)
+          (:addr . ,#'na:make-ip-address)
+          (:subnet . ,#'na:make-ip-network)
+          (:enum . ,#'identity))
+        do (setf (gethash type *zeek-type-parsers*) parser)))
+
+(%init-zeek-type-parsers)
+
+(defun %compound-element-type (type)
+  "Element type keyword of compound types like :SET[ADDR] or :VECTOR[COUNT],
+NIL for anything else."
+  (cl-ppcre:register-groups-bind (nil primitive-type-str)
+      ("(set|vector)\\[(.*?)\\]" (keyword->string type))
+    (string->keyword primitive-type-str)))
+
+(defun %get-compound-parser (type)
+  "For compound types like :SET[ADDR] or :VECTOR[COUNT], look up the element
+type's parser and return a closure that splits on separator and maps it.
+Caches the result in *zeek-type-parsers*."
+  (ax:when-let* ((element-type (%compound-element-type type))
+                 (element-parser (gethash element-type *zeek-type-parsers*)))
+    (setf (gethash type *zeek-type-parsers*)
+          (lambda (field)
+            (map 'vector element-parser
+                 (split-sequence *zeek-set-separator* field))))))
+
+(defun %type-handler (table type make-compound-handler default-handler)
+  "Return TABLE's handler for TYPE, computing and caching it on first miss:
+compound set[...]/vector[...] types get (funcall MAKE-COMPOUND-HANDLER
+element-type), anything else DEFAULT-HANDLER. Caching the pass-through
+DEFAULT-HANDLER matters: these lookups run per field per record, and the old
+fallthrough re-did keyword->string + regex matching every time."
+  (or (gethash type table)
+      (setf (gethash type table)
+            (ax:if-let ((element-type (%compound-element-type type)))
+              (funcall make-compound-handler element-type)
+              default-handler))))
 
 ;; TODO: think about this more. For port, 0 makes sense since it's reserved and should never actually be used. but for
 ;; something like RCODE, which is a count, 0 is a valid value. I suppose we're typically only doing math on these things
@@ -80,30 +177,39 @@
     ((:double :interval :time) 0.0d0)
     (t 'cl:null)))
 
+(defun %make-type-hash-table (entries)
+  "Create eq hash-table from alist entries."
+  (let ((ht (make-hash-table :test 'eq)))
+    (loop for (type . fn) in entries do (setf (gethash type ht) fn))
+    ht))
+
 (defparameter *zeek-jsonify*
-  `((:bool . ,(lambda (x) (if x "T" "F")))
-    (:time . ,#'timestamp-to-zeek-ts)
-    (:addr . ,(lambda (x) (str:downcase (na:str x))))
-    (:subnet . ,(lambda (x) (str:downcase (na:str x))))))
+  (%make-type-hash-table
+   `((:bool . ,(lambda (x) (if x "T" "F")))
+     (:time . ,#'timestamp-to-zeek-ts)
+     (:addr . ,(lambda (x) (str:downcase (na:str x))))
+     (:subnet . ,(lambda (x) (str:downcase (na:str x)))))))
 
 (defparameter *json-zeekify*
-  `((:bool . ,(lambda (x) (string= x "T")))
-    (:time . ,#'double-to-timestamp)
-    (:addr . ,#'na:make-ip-address)
-    (:subnet . ,#'na:make-ip-network)))
+  (%make-type-hash-table
+   `((:bool . ,(lambda (x) (string= x "T")))
+     (:time . ,#'double-to-timestamp)
+     (:addr . ,#'na:make-ip-address)
+     (:subnet . ,#'na:make-ip-network))))
 
 (defparameter *zeek-stringify*
-  `((:bool . ,(lambda (x) (if x "T" "F")))
-    (:count . ,#'write-to-string)
-    (:int . ,#'write-to-string)
-    (:double . ,(lambda (x) (format nil "~,6f" x)))
-    (:time . ,#'timestamp-to-zeek-ts-string)
-    (:interval . ,(lambda (x) (format nil "~,6f" x)))
-    (:string . ,#'identity)
-    (:port . ,#'string)
-    (:addr . ,(lambda (x) (str:downcase (na:str x))))
-    (:subnet . ,(lambda (x) (str:downcase (na:str x))))
-    (:enum . ,#'identity)))
+  (%make-type-hash-table
+   `((:bool . ,(lambda (x) (if x "T" "F")))
+     (:count . ,#'write-to-string)
+     (:int . ,#'write-to-string)
+     (:double . ,(lambda (x) (format nil "~,6f" x)))
+     (:time . ,#'timestamp-to-zeek-ts-string)
+     (:interval . ,(lambda (x) (format nil "~,6f" x)))
+     (:string . ,#'identity)
+     (:port . ,#'string)
+     (:addr . ,(lambda (x) (str:downcase (na:str x))))
+     (:subnet . ,(lambda (x) (str:downcase (na:str x))))
+     (:enum . ,#'identity))))
 
 ;; TODO: make these learnable, i.e., provide a bunch of zeek logs, output a file of these defparameter calls and load
 ;; the file if it's present. as long as you fully search the data structure it's fine to have duplicate "keys" in the
@@ -137,9 +243,12 @@
   ))
 
 (defparameter *field->type*
-  (remove-duplicates (loop for (nil . fields) in *path->fields*
-                           for (nil . types) in *path->types* append
-                                                              (loop for field in fields for type in types collect (cons field type))) :test #'equal))
+  (let ((ht (make-hash-table :test 'eq)))
+    (loop for (nil . fields) in *path->fields*
+          for (nil . types) in *path->types*
+          do (loop for field in fields for type in types
+                   do (setf (gethash field ht) type)))
+    ht))
 
 (defun infer-log-path-fields-types (zeek-log)
   (unless (zeek-path zeek-log)
@@ -163,74 +272,65 @@
 ;; newly created field) but what if we need to filter fields that are going to be fully parsed and used as part of a
 ;; mutator? hmm. multiple rounds? interleaving sounds annoying though.
 (defun parse-zeek-type (field type &optional unset-is-nil?)
-  (let ((type-string (keyword->string type)))
-    ;; unset should probably be 'null and empty should probably be #() (since '() is eq to nil)
-    (cond ((string= field (string *zeek-unset-field*)) (if unset-is-nil? nil 'cl::null))
-          ((string= field (string *zeek-empty-field*))
-           (if (eq type :string) "" #()))
-          ((or (str:starts-with? "set" type-string)
-               (str:starts-with? "vector" type-string))
-           (cl-ppcre:register-groups-bind (nil primitive-type) 
-               ("(set|vector)\\[(.*?)\\]" type-string)
-             (map 'vector (lambda (f) (parse-zeek-type f (string->keyword primitive-type)))
-                  (split-sequence *zeek-set-separator* field))))
-          (t (funcall (ax:assoc-value *zeek-primitive-type-parsers* type) field)))))
+  (declare (optimize (speed 3) (debug 0) (space 0) (compilation-speed 0))
+           (type string field)
+           (type keyword type))
+  ;; unset should probably be 'null and empty should probably be #() (since '() is eq to nil)
+  ;; NB: *zeek-unset-field* is a character; (string #\-) here would allocate on every call.
+  (cond ((and (= 1 (length field)) (char= *zeek-unset-field* (char field 0)))
+         (if unset-is-nil? nil 'cl::null))
+        ((string= field *zeek-empty-field*)
+         (if (eq type :string) "" #()))
+        (t (let ((parser (or (gethash type *zeek-type-parsers*)
+                             (%get-compound-parser type))))
+             (if parser
+                 (funcall parser field)
+                 (error "Unknown Zeek type: ~a" type))))))
 
 (defun unparse-zeek-type (field type)
-  (let ((type-string (keyword->string type)))
-    (cond ((eq 'cl:null field) "-") ;; 
-          ((stringp field)
-           field)
-          ((or (str:starts-with? "set" type-string)
-               (str:starts-with? "vector" type-string))
-           (cl-ppcre:register-groups-bind (nil primitive-type) 
-               ("(set|vector)\\[(.*?)\\]" type-string)
-             (str:join *zeek-set-separator*
-                       (map 'list (lambda (f) (unparse-zeek-type f (string->keyword primitive-type)))
-                            field))))
-          (t (funcall (ax:assoc-value *zeek-stringify* type) field)))))
+  (cond ((eq 'cl:null field) "-")
+        ((stringp field)
+         field)
+        (t (funcall (%type-handler *zeek-stringify* type
+                                   (lambda (element-type)
+                                     (lambda (f) (str:join *zeek-set-separator*
+                                                      (map 'list (lambda (x) (unparse-zeek-type x element-type)) f))))
+                                   (constantly nil))
+                    field))))
 
 (defun jsonify-zeek-type (field type)
-  (let ((type-string (keyword->string type)))
-    (cond ((stringp field)
-           field)
-          ((or (str:starts-with? "set" type-string)
-               (str:starts-with? "vector" type-string))
-           (cl-ppcre:register-groups-bind (nil primitive-type) 
-               ("(set|vector)\\[(.*?)\\]" type-string)
-             (map 'vector (lambda (f) (jsonify-zeek-type f (string->keyword primitive-type)))
-                  field)))
-          (t (ax:if-let ((func (ax:assoc-value *zeek-jsonify* type)))
-               (funcall func field)
-               field)))))
+  (if (stringp field)
+      field
+      (funcall (%type-handler *zeek-jsonify* type
+                              (lambda (element-type)
+                                (lambda (f) (map 'vector (lambda (x) (jsonify-zeek-type x element-type)) f)))
+                              #'identity)
+               field)))
 
 (defun jsonify-zeek-map (zeek-map)
   (loop for field being the hash-key of zeek-map
-        do (ax:when-let ((type (ax:assoc-value *field->type* field)))
-             ;; Zeek format uses "-" to indicate unset while JSON simply has the key not present in the output. We use
-             ;; CL:NULL in Zeek formatted logs to differentiate this from the string "-", so we remove these from the
-             ;; map when JSONifying a :ZEEK-MAP typed ZEEK-MAP.
-             (if (eq 'cl:null (gethash field zeek-map))
-                 (remhash field zeek-map)
-                 (setf (gethash field zeek-map) (jsonify-zeek-type (gethash field zeek-map) type)))))
+        do (multiple-value-bind (type found) (gethash field *field->type*)
+             (when found
+               ;; Zeek format uses "-" to indicate unset while JSON simply has the key not present in the output. We use
+               ;; CL:NULL in Zeek formatted logs to differentiate this from the string "-", so we remove these from the
+               ;; map when JSONifying a :ZEEK-MAP typed ZEEK-MAP.
+               (if (eq 'cl:null (gethash field zeek-map))
+                   (remhash field zeek-map)
+                   (setf (gethash field zeek-map) (jsonify-zeek-type (gethash field zeek-map) type))))))
   zeek-map)
 
 (defun zeekify-json-type (field type)
-  (let ((type-string (keyword->string type)))
-    (cond ((or (str:starts-with? "set" type-string)
-               (str:starts-with? "vector" type-string))
-           (cl-ppcre:register-groups-bind (nil primitive-type) 
-               ("(set|vector)\\[(.*?)\\]" type-string)
-             (map 'vector (lambda (f) (zeekify-json-type f (string->keyword primitive-type)))
-                  field)))
-          (t (ax:if-let ((func (ax:assoc-value *json-zeekify* type)))
-               (funcall func field)
-               field)))))
+  (funcall (%type-handler *json-zeekify* type
+                          (lambda (element-type)
+                            (lambda (f) (map 'vector (lambda (x) (zeekify-json-type x element-type)) f)))
+                          #'identity)
+           field))
 
 (defun zeekify-json-map (json-map)
   (loop for field being the hash-key of json-map
-        do (ax:when-let ((type (ax:assoc-value *field->type* field)))
-             (setf (gethash field json-map) (zeekify-json-type (gethash field json-map) type)))))
+        do (multiple-value-bind (type found) (gethash field *field->type*)
+             (when found
+               (setf (gethash field json-map) (zeekify-json-type (gethash field json-map) type))))))
 
 (defun stringify-json-type-to-zeek-string (field type)
   (etypecase field

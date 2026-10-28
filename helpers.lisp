@@ -40,7 +40,7 @@
                   (coerce lines 'simple-vector) ;; so #. trick works
                   (ax:alist-hash-table (mapcar #'cons lines (make-list len :initial-element t))
                                        :test #'equal :size len))))
-      (:ip (na:make-ip-set (mapcar #'na::make-ip-like lines)))
+      (:ip (na:make-ip-set (mapcar #'na:make-ip-like lines)))
       (:dns (apply #'cl-dns:make-trie lines)))))
 
 ;; basically what you want but you need to figure out the timezone bits.
@@ -59,7 +59,7 @@
 (defalias ts/= #'local-time:timestamp/= "Alias for LOCAL-TIME:TIMESTAMP/=")
 
 (defmacro anno (field &rest containers-and-labels)
-  "Given a column in FIELD and an even number of pair-wise containers/labels, return the label for which container contains FIELD. A default container can be specified with T. Use with SETF to create a new column based on this label, for example: (setf @orig_label (anno @o_h #.#I(\"192.168.0.0/16\") \"192.168\" \".127.52.\" \"string-contains\" \'(\"fe80::1462:3ff9:fd68:b0fc\") \"list-contains\" t \"unknown\")) creates the column ORIG_LABEL based on IP checks, a string check, a list membership check, and a default case."
+  "Given a column in FIELD and an even number of pair-wise containers/labels, return the label for which container contains FIELD. A default container can be specified with T. Use with SETF to create a new column based on this label, for example: (setf @orig_label (anno @o_h #.#I\"192.168.0.0/16\" \"192.168\" \".127.52.\" \"string-contains\" \'(\"fe80::1462:3ff9:fd68:b0fc\") \"list-contains\" t \"unknown\")) creates the column ORIG_LABEL based on IP checks, a string check, a list membership check, and a default case."
   `(cond ,@(loop for (container label) on containers-and-labels by #'cddr
                  if (eq container t)
                    collect `(t ,label)
@@ -98,9 +98,11 @@
   (defgeneric anonip (ip &optional num-octets)
     (:documentation "Anonymize an IP address by permuting each byte with a fixed set of permutations for each byte. Optionally, only anonymize the first NUM-OCTETS starting with the most significant. Defaults to anonymizing all of them.")
     (:method ((ip string) &optional num-octets)
+      ;; NETADDR::PARSE-IPV4 returns the integer value (truthy) or NIL;
+      ;; it replaced IPV4-STR? in netaddr.
       (unless num-octets
-        (setf num-octets (if (na::ipv4-str? ip) 4 16)))
-      (if (na::ipv4-str? ip)
+        (setf num-octets (if (na::parse-ipv4 ip) 4 16)))
+      (if (na::parse-ipv4 ip)
           (let ((quads (split-sequence #\. ip)))
             (setf (first quads) (if (>= num-octets 1)
                                     (aref (first v4-string-permutors) (parse-integer (first quads)))
@@ -117,8 +119,10 @@
             (str:join "." quads))
           (str:downcase (na:str (anonip (na:make-ip-address ip) num-octets)))))
     (:method ((ip na::ip-address) &optional num-octets)
-      (let ((version (na:version ip))
-            (ip (na:make-ip-address (na:int ip))))
+      (let* ((version (na:version ip))
+             ;; :version matters for small v6 ints (e.g. ::1), which would
+             ;; otherwise be inferred as v4.
+             (ip (na:make-ip-address (na:int ip) :version version)))
         (loop for offset from (if (= version 4) 24 120) downto 0 by 8
               for permutor in (if (= version 4) v4-permutors v6-permutors)
               repeat (or num-octets 16) ; default is always sufficient for IPv6/IPv4.
