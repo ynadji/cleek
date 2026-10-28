@@ -42,16 +42,19 @@ jobs:
         sudo mv common-lisp /root/
         sudo ls -al /root/common-lisp
         sudo ln -s $(pwd) /root/common-lisp/
-        sudo ros run --eval '(ql:quickload (list "cleek" "fiveam"))'
+        sudo make deps
 
     - name: Test CLEEK
       run: sudo make test
 
     - name: Build CLEEK
-      run: sudo make
+      run: sudo make build
 
     - uses: actions/upload-artifact@v4
       with:
         name: cleek
         path: bin/cleek
         overwrite: true
+        # Never upload silently-missing output: a build that produced no binary
+        # must not look like a job that produced an artifact.
+        if-no-files-found: error
