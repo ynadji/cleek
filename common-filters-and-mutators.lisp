@@ -2,6 +2,10 @@
 
 (cl-interpol:enable-interpol-syntax)
 
+(defun YYYY-mm-dd (ts)
+  (local-time:format-timestring nil ts :format '(:year "-" (:month 2) "-" (:day 2))
+                                       :timezone local-time:+utc-zone+))
+
 (defun make-anno-func (f)
   (let* ((nets-and-labels (mapcar (lambda (l) (str:split "," l)) (uiop:read-file-lines f)))
          (ip-set (na:make-ip-set (mapcar (lambda (pair) (na:make-ip-like (first pair))) nets-and-labels)))
