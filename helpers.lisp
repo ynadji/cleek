@@ -61,7 +61,21 @@
 ;; TODO: make ANNO take FIELD (or FIELDS). default field for all IPs? hmm that only makes sense if you already construct
 ;; the SETF sets.
 (defmacro anno (field &rest containers-and-labels)
-  "Given a column in FIELD and an even number of pair-wise containers/labels, return the label for which container contains FIELD. A default container can be specified with T. Use with SETF to create a new column based on this label, for example: (setf @orig_label (anno @o_h #.#I\"192.168.0.0/16\" \"192.168\" \".127.52.\" \"string-contains\" \'(\"fe80::1462:3ff9:fd68:b0fc\") \"list-contains\" t \"unknown\")) creates the column ORIG_LABEL based on IP checks, a string check, a list membership check, and a default case."
+  "Given a column in FIELD and an even number of pair-wise containers/labels,
+return the label of the first container that contains FIELD. A default container
+can be specified with T.
+
+Use with SETF to create a new column from the label. The #. is load-bearing: it
+builds the IP network once at read time rather than per record.
+
+  (setf @orig_label (anno @o_h
+                          #.#I\"192.168.0.0/16\"                 \"192.168\"
+                          \".127.52.\"                           \"string-contains\"
+                          \'(\"fe80::1462:3ff9:fd68:b0fc\")       \"list-contains\"
+                          t                                    \"unknown\"))
+
+creates the column ORIG_LABEL from a subnet check, a substring check, a list
+membership check, and a default case."
   `(cond ,@(loop for (container label) on containers-and-labels by #'cddr
                  if (eq container t)
                    collect `(t ,label)
@@ -100,26 +114,26 @@
   (defgeneric anonip (ip &optional num-octets)
     (:documentation "Anonymize an IP address by permuting each byte with a fixed set of permutations for each byte. Optionally, only anonymize the first NUM-OCTETS starting with the most significant. Defaults to anonymizing all of them.")
     (:method ((ip string) &optional num-octets)
-      ;; NETADDR::PARSE-IPV4 returns the integer value (truthy) or NIL;
-      ;; it replaced IPV4-STR? in netaddr.
-      (unless num-octets
-        (setf num-octets (if (na::parse-ipv4 ip) 4 16)))
-      (if (na::parse-ipv4 ip)
-          (let ((quads (split-sequence #\. ip)))
-            (setf (first quads) (if (>= num-octets 1)
-                                    (aref (first v4-string-permutors) (parse-integer (first quads)))
-                                    (first quads))
-                  (second quads) (if (>= num-octets 2)
-                                     (aref (second v4-string-permutors) (parse-integer (second quads)))
-                                     (second quads))
-                  (third quads) (if (>= num-octets 3)
-                                    (aref (third v4-string-permutors) (parse-integer (third quads)))
-                                    (third quads))
-                  (fourth quads) (if (>= num-octets 4)
-                                     (aref (fourth v4-string-permutors) (parse-integer (fourth quads)))
-                                     (fourth quads)))
-            (str:join "." quads))
-          (str:downcase (na:str (anonip (na:make-ip-address ip) num-octets)))))
+      ;; Parse once rather than twice: this runs per record under ANONIP!.
+      (let ((v4? (na::parse-ipv4 ip)))
+        (unless num-octets
+          (setf num-octets (if v4? 4 16)))
+        (if v4?
+            (let ((quads (split-sequence #\. ip)))
+              (setf (first quads) (if (>= num-octets 1)
+                                      (aref (first v4-string-permutors) (parse-integer (first quads)))
+                                      (first quads))
+                    (second quads) (if (>= num-octets 2)
+                                       (aref (second v4-string-permutors) (parse-integer (second quads)))
+                                       (second quads))
+                    (third quads) (if (>= num-octets 3)
+                                      (aref (third v4-string-permutors) (parse-integer (third quads)))
+                                      (third quads))
+                    (fourth quads) (if (>= num-octets 4)
+                                       (aref (fourth v4-string-permutors) (parse-integer (fourth quads)))
+                                       (fourth quads)))
+              (str:join "." quads))
+            (str:downcase (na:str (anonip (na:make-ip-address ip) num-octets))))))
     (:method ((ip na::ip-address) &optional num-octets)
       (let* ((version (na:version ip))
              ;; :version matters for small v6 ints (e.g. ::1), which would
