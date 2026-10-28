@@ -96,7 +96,11 @@ NIL if FIELD does not name a positive integer."
                           ;; For numeric types with fully-parsed?, parse directly
                           ;; with :start/:end — avoids subseq allocation.
                           (if (and fully-parsed?
-                                   ;; Not unset ("-") or empty "(empty)"
+                                   ;; Not unset: "-" is the only single-character
+                                   ;; field zeek writes. "(empty)" needs no test
+                                   ;; here -- zeek writes it only for set/vector
+                                   ;; types, and this path only takes the scalar
+                                   ;; numerics below.
                                    (/= (- end start) 1)
                                    (member type '(:double :interval :count :int :port) :test #'eq))
                               (if bline
