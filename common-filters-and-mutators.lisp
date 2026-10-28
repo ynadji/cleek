@@ -2,6 +2,15 @@
 
 (cl-interpol:enable-interpol-syntax)
 
+(defun make-anno-func (f)
+  (let* ((nets-and-labels (mapcar (lambda (l) (str:split "," l)) (uiop:read-file-lines f)))
+         (ip-set (na:make-ip-set (mapcar (lambda (pair) (na:make-ip-like (first pair))) nets-and-labels)))
+         (ht (make-hash-table :test 'equal)))
+    (loop for (net label) in nets-and-labels do (setf (gethash net ht) label))
+    (lambda (s) (let ((net (na:contains? ip-set (na:make-ip-like s)))) 
+             (when net
+               (gethash (na:str net) ht))))))
+
 (defparameter *weak-ciphers* '("rc4-hmac" "rc4-hmac-exp" "des-cbc-crc" "des-cbc-md4" "des-cbc-md5" "des3-cbc-md5" "des3-cbc-sha1"))
 
 (defparameter *common-filters-and-mutators*

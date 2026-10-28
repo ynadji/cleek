@@ -122,7 +122,7 @@ NIL if FIELD does not name a positive integer."
                                     (parse-zeek-type val type t)
                                     val))))))))
     (:json (if fully-parsed?
-               (zeekify-json-type (gethash field (zeek-map zeek-log)) (field->type zeek-log field))
+               (zeekify-json-type (gethash field (zeek-map zeek-log)) (field->type zeek-log field) t)
                (gethash field (zeek-map zeek-log))))
     ;; Delimiter mode has no #types, so FULLY-PARSED? is ignored: @@N is @N. A
     ;; row narrower than @N reads as "" rather than NIL, which is a string

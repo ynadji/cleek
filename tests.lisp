@@ -51,20 +51,49 @@
   (is (timestamp= (make-timestamp :day 7769 :sec 77304 :nsec 78114)
                   (parse-zeek-type "1623187704.078114" :time)))
 
-  (is (netaddr:ip= #I"10.20.30.40" (parse-zeek-type "10.20.30.40" :addr)))
-  (is (netaddr:ip= #I"cafe:babe::" (parse-zeek-type "cafe:babe::" :addr)))
+  ;; ADDR and SUBNET are strings on the wire in both Zeek TSV and JSON, so they
+  ;; stay strings here and are only promoted by @@. See
+  ;; FULLY-PARSED-ADDR-AND-SUBNET.
+  (is (string= "10.20.30.40" (parse-zeek-type "10.20.30.40" :addr)))
+  (is (string= "cafe:babe::" (parse-zeek-type "cafe:babe::" :addr)))
 
-  (is (netaddr:ip= #I"10.20.30.0/24" (parse-zeek-type "10.20.30.0/24" :subnet)))
-  (is (netaddr:ip= #I"cafe:babe::/94" (parse-zeek-type "cafe:babe::/94" :subnet)))
+  (is (string= "10.20.30.0/24" (parse-zeek-type "10.20.30.0/24" :subnet)))
+  (is (string= "cafe:babe::/94" (parse-zeek-type "cafe:babe::/94" :subnet)))
 
-  (is (every #'netaddr:ip= #I("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :vector[addr])))
-  (is (every #'netaddr:ip= #I("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :set[addr])))
+  (is (every #'string= #("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :vector[addr])))
+  (is (every #'string= #("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :set[addr])))
 
-  (is (every #'netaddr:ip= #I("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :vector[subnet])))
-  (is (every #'netaddr:ip= #I("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :set[subnet])))
+  ;; Unparsed means verbatim: no netaddr round trip to mask the host bits off.
+  (is (every #'string= #("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :vector[subnet])))
+  (is (every #'string= #("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :set[subnet])))
 
   (is (every #'= #(1 217 41) (parse-zeek-type "1,217,41" :vector[count])))
   (is (every #'string= #("google.com" "foo.bar" "bing.bong") (parse-zeek-type "google.com,foo.bar,bing.bong" :set[string]))))
+
+(test fully-parsed-addr-and-subnet
+  ;; @@ is what promotes an ADDR or SUBNET to the netaddr type a filter or
+  ;; mutator can do IP math on.
+  (is (netaddr:ip= #I"10.20.30.40" (parse-zeek-type "10.20.30.40" :addr t)))
+  (is (netaddr:ip= #I"cafe:babe::" (parse-zeek-type "cafe:babe::" :addr t)))
+
+  (is (netaddr:ip= #I"10.20.30.0/24" (parse-zeek-type "10.20.30.0/24" :subnet t)))
+  (is (netaddr:ip= #I"cafe:babe::/94" (parse-zeek-type "cafe:babe::/94" :subnet t)))
+
+  (is (every #'netaddr:ip= #I("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :vector[addr] t)))
+  (is (every #'netaddr:ip= #I("1.1.1.1" "255.255.255.255" "::") (parse-zeek-type "1.1.1.1,255.255.255.255,::" :set[addr] t)))
+
+  (is (every #'netaddr:ip= #I("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :vector[subnet] t)))
+  (is (every #'netaddr:ip= #I("1.1.1.1/24" "255.255.255.255/10" "::/96") (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :set[subnet] t)))
+
+  ;; The other types are unaffected by the promotion.
+  (is (= 1 (parse-zeek-type "1" :count t)))
+  (is (timestamp= (make-timestamp :day 7769 :sec 77304 :nsec 78114)
+                  (parse-zeek-type "1623187704.078114" :time t)))
+
+  ;; @@ on an unset field is NIL rather than CL::NULL so a filter drops the line.
+  (is (eq 'cl::null (parse-zeek-type "-" :addr)))
+  (is (null (parse-zeek-type "-" :addr t)))
+  (is (null (parse-zeek-type "-" :subnet t))))
 
 (test unparse-zeek-type
   (is (string= "T" (unparse-zeek-type (parse-zeek-type "T" :bool) :bool)))
@@ -96,11 +125,16 @@
                (unparse-zeek-type (parse-zeek-type "1.1.1.1,255.255.255.255,::" :set[addr])
                                   :set[addr])))
 
-  (is (string= "1.1.1.0/24,255.192.0.0/10,::/96"
+  ;; Only the netaddr round trip @@ forces masks the host bits off; the lazy
+  ;; parse hands the field back exactly as the log wrote it.
+  (is (string= "1.1.1.1/24,255.255.255.255/10,::/96"
                (unparse-zeek-type (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :vector[subnet])
                                   :vector[subnet])))
   (is (string= "1.1.1.0/24,255.192.0.0/10,::/96"
-               (unparse-zeek-type (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :set[subnet])
+               (unparse-zeek-type (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :vector[subnet] t)
+                                  :vector[subnet])))
+  (is (string= "1.1.1.0/24,255.192.0.0/10,::/96"
+               (unparse-zeek-type (parse-zeek-type "1.1.1.1/24,255.255.255.255/10,::/96" :set[subnet] t)
                                   :set[subnet])))
 
   (is (string= "1,217,41"
@@ -471,6 +505,76 @@ eight")
                             (invoke-restart 'cleek::drop-line))))
       (cat-logs-string test-output :json nil "(= @@r_p 22)" bad-ssh-json)
       (is (= 3 (count-rows test-output))))))
+
+(defun tsv-log-string (rows)
+  "Render ROWS as Zeek TSV text. A string row is written verbatim (for the
+#separator line, which is space-separated); a list row is joined with tabs."
+  (format nil "~{~a~%~}"
+          (mapcar (lambda (row) (if (stringp row) row (str:join #\Tab row))) rows)))
+
+(defparameter *unknown-field-log*
+  (tsv-log-string
+   ;; An ADDR/SUBNET log whose #path and #fields are not in *PATH->FIELDS*, so
+   ;; the types come only from the log's own #types header.
+   '("#separator \\x09"
+     ("#set_separator" ",")
+     ("#empty_field" "(empty)")
+     ("#unset_field" "-")
+     ("#path" "intel_hit")
+     ("#fields" "ts" "seen_host" "seen_net" "seen_hosts")
+     ("#types" "time" "addr" "subnet" "set[addr]")
+     ("1623187691.095184" "64.189.88.51" "10.0.0.0/8" "1.1.1.1,8.8.8.8")
+     ("1623187692.095184" "192.168.1.145" "192.168.0.0/16" "10.0.0.1"))))
+
+(test addr-and-subnet-json-export
+  (netaddr:enable-ip-syntax)
+  (let ((test-output (merge-pathnames "test.log" (uiop:temporary-directory))))
+    (with-tmp-file (log *unknown-field-log*)
+      ;; ADDR and SUBNET are strings in JSON, not the nested record netaddr's
+      ;; structs stringify to, e.g.
+      ;; {"seen_host":{"version":4,"str":"64.189.88.51","int":1086150707}}.
+      (cat-logs-string test-output :json nil nil log)
+      (is (equal '("{\"ts\":1.623187691095184e9,\"seen_host\":\"64.189.88.51\",\"seen_net\":\"10.0.0.0/8\",\"seen_hosts\":[\"1.1.1.1\",\"8.8.8.8\"]}"
+                   "{\"ts\":1.623187692095184e9,\"seen_host\":\"192.168.1.145\",\"seen_net\":\"192.168.0.0/16\",\"seen_hosts\":[\"10.0.0.1\"]}")
+                 (uiop:read-file-lines test-output)))
+      (uiop:delete-file-if-exists test-output)
+
+      ;; Mutating a record takes a different write path, which must agree. Only
+      ;; the fields at issue are asserted here, since a created field's position
+      ;; in the key order is beside the point.
+      (cat-logs-string test-output :json "(setf @note \"hit\")" nil log)
+      (let ((lines (uiop:read-file-lines test-output)))
+        (is (str:contains? "\"seen_host\":\"64.189.88.51\",\"seen_net\":\"10.0.0.0/8\",\"seen_hosts\":[\"1.1.1.1\",\"8.8.8.8\"]"
+                           (first lines)))
+        (is (str:contains? "\"seen_host\":\"192.168.1.145\",\"seen_net\":\"192.168.0.0/16\",\"seen_hosts\":[\"10.0.0.1\"]"
+                           (second lines)))
+        (is (every (lambda (line) (str:contains? "\"note\":\"hit\"" line)) lines)))
+      (uiop:delete-file-if-exists test-output)
+
+      ;; @@ still promotes these fields to netaddr types, so IP math works.
+      (cat-logs-string test-output :json nil "(private? @@seen_host)" log)
+      (is (= 1 (count-rows test-output)))
+      (is (str:contains? "\"seen_host\":\"192.168.1.145\"" (first (uiop:read-file-lines test-output))))
+      (uiop:delete-file-if-exists test-output)
+
+      (cat-logs-string test-output :json nil "(contains? @@seen_net #.#I\"10.1.2.3\")" log)
+      (is (= 1 (count-rows test-output)))
+      (is (str:contains? "\"seen_net\":\"10.0.0.0/8\"" (first (uiop:read-file-lines test-output))))
+      (uiop:delete-file-if-exists test-output)
+
+      ;; ...including the set[addr] element type.
+      (cat-logs-string test-output :json nil "(find-if #'private? @@seen_hosts)" log)
+      (is (= 1 (count-rows test-output)))
+      (is (str:contains? "\"seen_hosts\":[\"10.0.0.1\"]" (first (uiop:read-file-lines test-output))))
+      (uiop:delete-file-if-exists test-output)
+
+      ;; Zeek TSV output is unchanged: these fields pass through verbatim.
+      (cat-logs-string test-output :zeek "(setf @note \"hit\")" nil log)
+      (is (equal '("1623187691.095184	64.189.88.51	10.0.0.0/8	1.1.1.1,8.8.8.8	hit"
+                   "1623187692.095184	192.168.1.145	192.168.0.0/16	10.0.0.1	hit")
+                 (remove-if (lambda (line) (str:starts-with? "#" line))
+                            (uiop:read-file-lines test-output))))
+      (uiop:delete-file-if-exists test-output))))
 
 ;;; -D/--delimiter-mode: plain delimited text with 1-based @N columns.
 

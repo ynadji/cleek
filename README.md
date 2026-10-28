@@ -150,6 +150,11 @@ data type:
 * `subnet` -> `netaddr::ip-network`
 * `enum` -> `string`
 
+`addr` and `subnet` are the two types that only `@@` ever materializes. Both
+formats write them as strings, so converting a TSV to JSON leaves them as
+`"64.189.88.51"` and `"10.0.0.0/8"` rather than the nested record a
+`netaddr::ip-address` would stringify to.
+
 Oftentimes when working with Zeek TSVs you can get by with just strings:
 
 ```
