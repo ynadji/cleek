@@ -37,16 +37,49 @@ DROP-LINE/KEEP-LINE restarts interactively and must keep doing so."
      (handler-bind ((serious-condition #'%die))
        ,@body)))
 
+(defparameter *pinned-deps* '("netaddr" "cl-dns" "cl-tld")
+  "Systems CI checks out from git and expects ASDF to resolve to those
+checkouts. All three are also in the quicklisp dist, so when the source registry
+does not reach the checkouts, quicklisp quietly supplies a dist release instead
+and nothing complains until a symbol moves. That is what happened: cleek was
+built against netaddr-20260101-git, eight months behind the MAKE-IP-LIKE that
+helpers.lisp needs.")
+
+(defun %dist-release-p (directory)
+  "True when DIRECTORY is a quicklisp dist release
+(<quicklisp>/dists/<dist>/software/<release>/) rather than a checkout."
+  (search "/dists/" (namestring directory)))
+
+(defun check-pinned-deps ()
+  "Report where each of *PINNED-DEPS* resolved and refuse a quicklisp dist
+release. The paths are printed unconditionally so that the next surprise is one
+grep of the job log away rather than invisible."
+  (let ((substituted '()))
+    (dolist (name *pinned-deps*)
+      (let ((directory (asdf:system-source-directory name)))
+        (format t "~&cleek-ci: ~a <- ~a~%" name directory)
+        (when (%dist-release-p directory)
+          (push (list name directory) substituted))))
+    (finish-output)
+    (when substituted
+      (error "pinned dependenc~@P resolved to a quicklisp dist release instead ~
+of a checkout: ~{~a (~a)~^, ~}. Check CL_SOURCE_REGISTRY."
+             (length substituted)
+             (reduce #'append (reverse substituted))))))
+
 (defun load-deps ()
   "Quickload what the test and build targets need."
   (with-fatal-conditions
-    (uiop:symbol-call :ql :quickload (list "cleek" "fiveam")))
+    (uiop:symbol-call :ql :quickload (list "cleek" "fiveam"))
+    (check-pinned-deps))
   (uiop:quit 0 t))
 
 (defun test ()
   "Run the test suites. CLEEK/TESTS' TEST-OP signals on any fiveam failure, so a
 red suite lands in WITH-FATAL-CONDITIONS and exits nonzero."
   (with-fatal-conditions
+    (asdf:load-system :cleek)
+    (check-pinned-deps)
     (asdf:test-system :cleek))
   (uiop:quit 0 t))
 
@@ -55,5 +88,7 @@ red suite lands in WITH-FATAL-CONDITIONS and exits nonzero."
 normally exits before returning; the Makefile is what verifies that a working
 bin/cleek actually appeared."
   (with-fatal-conditions
+    (asdf:load-system :cleek)
+    (check-pinned-deps)
     (asdf:make :cleek))
   (uiop:quit 0 t))
